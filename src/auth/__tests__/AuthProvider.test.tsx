@@ -42,13 +42,16 @@ import { AuthProvider, SESSION_TOKEN_KEY, useAuth } from "../AuthProvider"
 import { RequireAuth } from "../RequireAuth"
 
 // Stub the API client module before importing anything else that depends
-// on it. The stub mirrors only the methods the AuthProvider calls.
+// on it. The stub mirrors only the methods the AuthProvider calls + the
+// surface the Sites route uses for the rendering smoke test below.
 let getMeImpl: () => Promise<unknown> = async () => {
   throw new Error("getMe not configured")
 }
 let loginImpl: (input: unknown) => Promise<unknown> = async () => {
   throw new Error("login not configured")
 }
+let listSitesImpl: () => Promise<unknown> = async () => []
+let listCrawlsImpl: () => Promise<unknown> = async () => []
 let token: string | null = null
 
 vi.mock("@/api/useApiClient", () => {
@@ -70,6 +73,8 @@ vi.mock("@/api/useApiClient", () => {
       logout: async () => {
         token = null
       },
+      listSitesByTenant: () => listSitesImpl(),
+      listCrawlsBySite: () => listCrawlsImpl(),
     }),
     __resetApiClientForTests: () => {
       token = null
@@ -86,6 +91,8 @@ beforeEach(() => {
   loginImpl = async () => {
     throw new Error("login not configured")
   }
+  listSitesImpl = async () => []
+  listCrawlsImpl = async () => []
 })
 
 afterEach(() => {
@@ -192,7 +199,7 @@ describe("RequireAuth", () => {
   })
 })
 
-describe("Protected mock-data Sites page", () => {
+describe("Protected Sites page", () => {
   it("renders inside the auth shell once the stored token validates", async () => {
     window.localStorage.setItem(SESSION_TOKEN_KEY, "tok-seed")
     getMeImpl = async () => ({
@@ -206,29 +213,52 @@ describe("Protected mock-data Sites page", () => {
       ],
       activeTenantId: "t_1",
     })
+    listSitesImpl = async () => [
+      {
+        id: "s_1",
+        tenantId: "t_1",
+        url: "https://acme.example",
+        createdAt: "2026-04-30T00:00:00Z",
+        lastCrawlAt: "2026-04-30T00:00:00Z",
+        verifiedAt: "2026-04-30T00:00:00Z",
+      },
+    ]
 
     const { Sites } = await import("@/routes/Sites")
+    const { QueryClient, QueryClientProvider } = await import(
+      "@tanstack/react-query"
+    )
+    const qc = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
 
     render(
-      <MemoryRouter initialEntries={["/t/t_1/sites"]}>
-        <AuthProvider>
-          <Routes>
-            <Route
-              path="/t/:tenantId/sites"
-              element={
-                <RequireAuth>
-                  <Sites />
-                </RequireAuth>
-              }
-            />
-          </Routes>
-        </AuthProvider>
-      </MemoryRouter>,
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={["/t/t_1/sites"]}>
+          <AuthProvider>
+            <Routes>
+              <Route
+                path="/t/:tenantId/sites"
+                element={
+                  <RequireAuth>
+                    <Sites />
+                  </RequireAuth>
+                }
+              />
+            </Routes>
+          </AuthProvider>
+        </MemoryRouter>
+      </QueryClientProvider>,
     )
 
     await waitFor(() => {
       expect(screen.getByText("Sites")).toBeTruthy()
     })
-    expect(screen.getByText("Acme Corp")).toBeTruthy()
+    await waitFor(() => {
+      expect(screen.getByText("acme.example")).toBeTruthy()
+    })
   })
 })

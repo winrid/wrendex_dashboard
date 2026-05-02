@@ -203,6 +203,10 @@ export type Tenant = {
   createdAt: string
 }
 
+/** Mirrors com.bigbug.model.SiteCadence. null on the wire is treated as
+ *  PAUSED by the backend (see Site.resolvedCadence). */
+export type SiteCadence = "PAUSED" | "DAILY" | "HOURLY" | "CONTINUOUS"
+
 export type Site = {
   id: string
   tenantId: string
@@ -215,6 +219,15 @@ export type Site = {
   requestTimeoutSeconds?: number | null
   userAgent?: string | null
   jsRendering?: boolean | null
+  /** Verification fields (plan section 0.3a / 1.2 step 6). */
+  verificationMethod?: SiteVerificationMethod | null
+  verificationToken?: string | null
+  verifiedAt?: string | null
+  lastVerificationCheckAt?: string | null
+  /** Schedule fields (plan section 4A). null means PAUSED. */
+  cadence?: SiteCadence | null
+  nextRunAt?: string | null
+  lastScheduledRunAt?: string | null
 }
 
 export type CrawlRun = {
@@ -402,6 +415,12 @@ export type RedirectEntry = {
   hops: RedirectHop[]
   loop: boolean
   hasMetaRefresh: boolean
+  /** Pages that link to the redirecting URL (iter 2). */
+  originatingPages?: string[] | null
+  /** True when the redirect is on a render-blocking resource (iter 2). */
+  renderBlocking?: boolean | null
+  /** Group key used by the duplicate-redirect tracker (iter 2). */
+  duplicateTracker?: string | null
 }
 
 export type RedirectsResult = {
@@ -426,6 +445,13 @@ export type ResourceEntry = {
   url: string
   type: string
   sourcePageCount: number
+  /** Sample of the URLs of the pages that include this resource (iter 2). */
+  originatingPages?: string[] | null
+  /** True when the resource blocks rendering (iter 2). */
+  renderBlocking?: boolean | null
+  /** Hash bucket the duplicate-resource detector groups this resource under
+   *  (iter 2). null when the resource is not part of a dup group. */
+  duplicateTracker?: string | null
 }
 
 export type ResourcesResult = {
@@ -468,13 +494,16 @@ export type StructuredDataResult = {
 }
 
 /** Shape of /api/sites/{siteId}/health-score (ReportController.getHealthScore).
- *  The controller currently strips errorCount/warningCount/noticeCount before
- *  returning - per the plan section 0.3d that's a known gap; this type matches
- *  the wire format as it is, not as it ought to be. */
+ *  As of iter 2 commit 8e66c9d the endpoint also serializes errorCount /
+ *  warningCount / noticeCount per entry so the trend sparkline can plot them
+ *  alongside the score without a second round-trip. */
 export type HealthScorePoint = {
   crawlRunId: string
   startedAt: string
   healthScore: number
+  errorCount: number
+  warningCount: number
+  noticeCount: number
 }
 
 // ---------------------------------------------------------------------------

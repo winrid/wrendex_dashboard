@@ -3,6 +3,9 @@ import { AppShell } from "@/components/layout/AppShell"
 import { RequireAuth } from "@/auth/RequireAuth"
 import { Sites } from "@/routes/Sites"
 import { SiteDetail } from "@/routes/SiteDetail"
+import { CrawlHistory } from "@/routes/CrawlHistory"
+import { CrawlDetailComingSoon } from "@/routes/CrawlDetailComingSoon"
+import { CategoryComingSoon } from "@/routes/CategoryComingSoon"
 import { SiteInbox } from "@/routes/SiteInbox"
 import { Inbox } from "@/routes/Inbox"
 import { Reports } from "@/routes/Reports"
@@ -45,6 +48,15 @@ export const router = createBrowserRouter([
       { index: true, element: <Sites /> },
       { path: "sites", element: <Sites /> },
       { path: "sites/:siteId", element: <SiteDetail /> },
+      { path: "sites/:siteId/crawls", element: <CrawlHistory /> },
+      {
+        path: "sites/:siteId/crawls/:crawlId",
+        element: <CrawlDetailComingSoon />,
+      },
+      {
+        path: "crawls/:crawlId/issues/category/:categoryId",
+        element: <CategoryComingSoon />,
+      },
       { path: "sites/:siteId/inbox", element: <SiteInbox /> },
       { path: "inbox", element: <Inbox /> },
       { path: "reports", element: <Reports /> },

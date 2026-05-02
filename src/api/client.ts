@@ -270,15 +270,31 @@ export function createApiClient(opts: CreateApiClientOptions) {
   /**
    * INTERNAL / debug only. Triggers the synchronous crawl endpoint and
    * blocks until the crawl finishes. The dashboard "Run audit now" button
-   * binds to the async POST /api/sites/{siteId}/crawls endpoint that lands
-   * in plan section 0.3b - do NOT call this from feature code.
+   * binds to startCrawlAsync below.
    */
   function startCrawlSync(siteId: string): Promise<CrawlRun> {
     return request<CrawlRun>("POST", `/api/sites/${siteId}/crawl`)
   }
 
+  /**
+   * Async crawl trigger. Backed by POST /api/sites/{siteId}/crawls (plural).
+   * The backend returns 202 Accepted with the queued CrawlRun (status="queued"
+   * or "running"); poll getCrawl(run.id) every couple of seconds to advance.
+   * If a run is already active for the site, the backend returns 409 with the
+   * existing run; the typed client surfaces that as an ApiError with .body
+   * set to the live CrawlRun so callers can recover by polling it.
+   */
+  function startCrawlAsync(siteId: string): Promise<CrawlRun> {
+    return request<CrawlRun>("POST", `/api/sites/${siteId}/crawls`)
+  }
+
   function listCrawlsBySite(siteId: string): Promise<CrawlRun[]> {
     return request<CrawlRun[]>("GET", `/api/sites/${siteId}/crawls`)
+  }
+
+  /** Fetches a single CrawlRun by id; used by the "Run audit now" poll loop. */
+  function getCrawl(crawlRunId: string): Promise<CrawlRun> {
+    return request<CrawlRun>("GET", `/api/crawls/${crawlRunId}`)
   }
 
   // -------------------------------------------------------------------------
@@ -344,6 +360,10 @@ export function createApiClient(opts: CreateApiClientOptions) {
   function getCrawlLog(siteId: string): Promise<CrawlLogEntry[]> {
     return request<CrawlLogEntry[]>("GET", `/api/sites/${siteId}/crawl-log`)
   }
+
+  /** Plan-preferred name for getCrawlLog. Same backing endpoint - both names
+   *  are exported so feature code can use whichever reads naturally. */
+  const listCrawlLog = getCrawlLog
 
   function exploreLinks(
     crawlId: string,
@@ -426,7 +446,9 @@ export function createApiClient(opts: CreateApiClientOptions) {
     deleteSite,
     // crawls
     startCrawlSync,
+    startCrawlAsync,
     listCrawlsBySite,
+    getCrawl,
     // reports
     listCrawlPages,
     listCrawlAlerts,
@@ -436,6 +458,7 @@ export function createApiClient(opts: CreateApiClientOptions) {
     getIssuesSummary,
     explorePages,
     getCrawlLog,
+    listCrawlLog,
     exploreLinks,
     getStructure,
     getRedirects,
