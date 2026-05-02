@@ -192,7 +192,7 @@ export function PageDetail() {
           <PerformanceTab page={page} />
         </TabsContent>
         <TabsContent value="links" className="mt-4">
-          <LinksTab page={page} />
+          <LinksTab page={page} tenantId={tenantId} siteId={siteId} />
         </TabsContent>
         <TabsContent value="resources" className="mt-4">
           <ResourcesTab
@@ -362,54 +362,77 @@ function PerformanceTab({ page }: { page: Page }) {
 // Links
 // ---------------------------------------------------------------------------
 
-function LinksTab({ page }: { page: Page }) {
+function LinksTab({
+  page,
+  tenantId,
+  siteId,
+}: {
+  page: Page
+  tenantId: string
+  siteId: string
+}) {
   const links = page.outgoingLinks ?? []
+  const explorerHref = `/t/${tenantId}/sites/${siteId}/crawls/${page.crawlRunId}/links`
   if (links.length === 0) {
     return (
-      <div className="rounded-md border bg-card p-6 text-sm text-muted-foreground">
-        No outgoing links recorded for this page.
+      <div className="space-y-3">
+        <div className="rounded-md border bg-card p-6 text-sm text-muted-foreground">
+          No outgoing links recorded for this page.
+        </div>
+        <div className="text-sm">
+          <Link to={explorerHref} className="text-primary hover:underline">
+            Open the full Link Explorer for this crawl
+          </Link>
+        </div>
       </div>
     )
   }
   return (
-    <div className="rounded-md border bg-card">
-      <ul className="divide-y">
-        {links.map((link, idx) => (
-          <li
-            key={`${link.resolvedUrl}-${idx}`}
-            className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm"
-          >
-            <div className="min-w-0 flex-1">
-              <a
-                href={link.resolvedUrl}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="block truncate font-mono text-xs text-primary hover:underline"
-                title={link.resolvedUrl}
-              >
-                {link.resolvedUrl}
-              </a>
-              {link.anchorText ? (
-                <div className="truncate text-xs text-muted-foreground">
-                  "{link.anchorText}"
-                </div>
-              ) : null}
-            </div>
-            <div className="flex items-center gap-2">
-              {link.rel ? (
-                <Badge variant="outline" className="text-[10px]">
-                  rel={link.rel}
-                </Badge>
-              ) : null}
-              {link.nofollow ? (
-                <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300">
-                  nofollow
-                </Badge>
-              ) : null}
-            </div>
-          </li>
-        ))}
-      </ul>
+    <div className="space-y-3">
+      <div className="rounded-md border bg-card">
+        <ul className="divide-y">
+          {links.map((link, idx) => (
+            <li
+              key={`${link.resolvedUrl}-${idx}`}
+              className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm"
+            >
+              <div className="min-w-0 flex-1">
+                <a
+                  href={link.resolvedUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="block truncate font-mono text-xs text-primary hover:underline"
+                  title={link.resolvedUrl}
+                >
+                  {link.resolvedUrl}
+                </a>
+                {link.anchorText ? (
+                  <div className="truncate text-xs text-muted-foreground">
+                    "{link.anchorText}"
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex items-center gap-2">
+                {link.rel ? (
+                  <Badge variant="outline" className="text-[10px]">
+                    rel={link.rel}
+                  </Badge>
+                ) : null}
+                {link.nofollow ? (
+                  <Badge className="bg-amber-500/15 text-amber-700 dark:text-amber-300">
+                    nofollow
+                  </Badge>
+                ) : null}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div className="text-sm">
+        <Link to={explorerHref} className="text-primary hover:underline">
+          Open the full Link Explorer for this crawl
+        </Link>
+      </div>
     </div>
   )
 }

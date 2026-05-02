@@ -123,6 +123,14 @@ external component libraries.
   (R.05). Reads `getRedirects`; originating-pages popover.
 - `/t/:tenantId/sites/:siteId/crawls/:crawlId/resources` - ResourcesReport
   (R.08). Reads `getResources`; tabs for Images / Scripts / Stylesheets.
+- `/t/:tenantId/sites/:siteId/health-history` - HealthHistory (R.01).
+  ComposedChart of `getHealthScore` + a per-crawl DataTable with delta vs
+  previous. Overlays deploy pins from `listReleaseAnnotations`; the call
+  is wrapped in try/catch so a 404/5xx renders the page without pins.
+- `/t/:tenantId/sites/:siteId/crawls/:crawlId/links` - LinkExplorer (R.03).
+  Server-paginated grid over `exploreLinks`; type filter is server-side,
+  rel + URL search are client-side filters on the loaded page; row click
+  opens a popover with full anchor text + rel string + canonical target.
 - `/t/:tenantId/sites/:siteId/settings` - SiteSettings (iter 6 FE-7).
   Schedule editor (cadence Select; disabled if unverified, with a link
   to the existing VerificationDialog), 3 canned alert rules with

@@ -229,6 +229,11 @@ export function SiteDetail() {
             </Link>
           </Button>
           <Button asChild variant="outline" size="sm">
+            <Link to={`/t/${tenantId}/sites/${siteId}/health-history`}>
+              Health history
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
             <Link to={`/t/${tenantId}/sites/${siteId}/settings`}>
               Settings
             </Link>

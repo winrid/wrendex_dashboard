@@ -514,6 +514,22 @@ export type StructuredDataResult = {
   typeCounts: Record<string, number>
 }
 
+/** Shape of /api/sites/{siteId}/release-annotations (Phase 2 R.01). One row
+ *  per detected deploy that overlaps a crawl run; the dashboard pins them
+ *  on the health-history chart so a score regression can be tied back to a
+ *  specific commit. The endpoint is shipping in parallel; the FE absorbs
+ *  404/5xx and renders the chart without annotations when it isn't wired
+ *  yet, so this type is intentionally small. */
+export type ReleaseAnnotation = {
+  crawlRunId: string
+  sha: string
+  env: string
+  ref: string
+  message: string
+  startedAt: string
+  healthScore: number
+}
+
 /** Shape of /api/sites/{siteId}/health-score (ReportController.getHealthScore).
  *  As of iter 2 commit 8e66c9d the endpoint also serializes errorCount /
  *  warningCount / noticeCount per entry so the trend sparkline can plot them

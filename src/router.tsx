@@ -4,6 +4,8 @@ import { RequireAuth } from "@/auth/RequireAuth"
 import { Sites } from "@/routes/Sites"
 import { SiteDetail } from "@/routes/SiteDetail"
 import { CrawlHistory } from "@/routes/CrawlHistory"
+import { HealthHistory } from "@/routes/HealthHistory"
+import { LinkExplorer } from "@/routes/LinkExplorer"
 import { CrawlDetailComingSoon } from "@/routes/CrawlDetailComingSoon"
 import { IssueCategoryDetail } from "@/routes/IssueCategoryDetail"
 import { IssueTypeDetail } from "@/routes/IssueTypeDetail"
@@ -66,7 +68,12 @@ export const router = createBrowserRouter([
       { path: "sites/:siteId", element: <SiteDetail /> },
       { path: "sites/:siteId/settings", element: <SiteSettings /> },
       { path: "sites/:siteId/pages", element: <PageDetail /> },
+      { path: "sites/:siteId/health-history", element: <HealthHistory /> },
       { path: "sites/:siteId/crawls", element: <CrawlHistory /> },
+      {
+        path: "sites/:siteId/crawls/:crawlId/links",
+        element: <LinkExplorer />,
+      },
       {
         path: "sites/:siteId/crawls/:crawlId",
         element: <CrawlDetailComingSoon />,

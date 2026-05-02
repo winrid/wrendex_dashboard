@@ -44,6 +44,7 @@ import type {
   PasswordResetConfirm,
   PasswordResetRequest,
   RedirectsResult,
+  ReleaseAnnotation,
   ResourcesResult,
   SetupIntent,
   Site,
@@ -421,6 +422,22 @@ export function createApiClient(opts: CreateApiClientOptions) {
     )
   }
 
+  /**
+   * Returns the deploy/release annotations to overlay on the health-history
+   * chart (Phase 2 R.01). The BE endpoint is shipping in parallel; callers
+   * MUST tolerate a 404 / 5xx by catching the ApiError and rendering the
+   * chart without annotations. Empty arrays are valid (the endpoint exists
+   * but no deploys overlap the crawls in range).
+   */
+  function listReleaseAnnotations(
+    siteId: string,
+  ): Promise<ReleaseAnnotation[]> {
+    return request<ReleaseAnnotation[]>(
+      "GET",
+      `/api/sites/${siteId}/release-annotations`,
+    )
+  }
+
   function getIssuesSummary(crawlId: string): Promise<IssuesSummary> {
     return request<IssuesSummary>("GET", `/api/crawls/${crawlId}/issues`)
   }
@@ -760,6 +777,7 @@ export function createApiClient(opts: CreateApiClientOptions) {
     listSiteAlerts,
     listPageAlerts,
     getHealthScore,
+    listReleaseAnnotations,
     getIssuesSummary,
     explorePages,
     getCrawlLog,
