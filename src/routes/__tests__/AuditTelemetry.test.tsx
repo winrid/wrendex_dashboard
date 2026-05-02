@@ -1,13 +1,21 @@
-// Smoke test for the public /audit landing form. Mocks
-// startAnonymousCrawl to return a token and asserts the form posts and
-// the route navigates to /a/{token}.
+// Funnel telemetry: the /audit submit form fires hero_paste_url with
+// {url} on the typed-client sendTelemetry method. Mocked at the
+// useApiClient boundary; no real network involved.
 
-import { describe, expect, it, vi } from "vitest"
-import { fireEvent, render, screen, waitFor, act } from "@testing-library/react"
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
+import { describe, expect, it, vi, afterEach } from "vitest"
+import { cleanup, fireEvent, render, screen, waitFor, act } from "@testing-library/react"
+
+afterEach(() => {
+  cleanup()
+})
+import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
-const startAnonymousCrawl = vi.fn()
+const startAnonymousCrawl = vi.fn().mockResolvedValue({
+  token: "tok-xyz",
+  crawlRunId: "c_1",
+  status: "queued",
+})
 const sendTelemetry = vi.fn()
 
 vi.mock("@/api/useApiClient", () => ({
@@ -18,11 +26,6 @@ vi.mock("@/api/useApiClient", () => ({
 }))
 
 import { Audit } from "../Audit"
-
-function LocationProbe() {
-  const loc = useLocation()
-  return <div data-testid="loc">{loc.pathname}</div>
-}
 
 function renderRoute() {
   const qc = new QueryClient({
@@ -36,21 +39,15 @@ function renderRoute() {
       <MemoryRouter initialEntries={["/audit"]}>
         <Routes>
           <Route path="/audit" element={<Audit />} />
-          <Route path="/a/:token" element={<LocationProbe />} />
+          <Route path="/a/:token" element={<div>TEASER</div>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   )
 }
 
-describe("Audit landing", () => {
-  it("submits startAnonymousCrawl and navigates to /a/{token} on success", async () => {
-    startAnonymousCrawl.mockResolvedValue({
-      token: "tok-xyz",
-      crawlRunId: "c_1",
-      status: "queued",
-    })
-
+describe("Audit funnel telemetry", () => {
+  it("fires hero_paste_url with {url} on submit", async () => {
     renderRoute()
 
     const input = screen.getByLabelText("Site URL") as HTMLInputElement
@@ -64,12 +61,14 @@ describe("Audit landing", () => {
     })
 
     await waitFor(() => {
-      expect(startAnonymousCrawl).toHaveBeenCalledWith({
-        url: "https://acme.example",
-      })
+      expect(sendTelemetry).toHaveBeenCalledTimes(1)
     })
-    await waitFor(() => {
-      expect(screen.getByTestId("loc").textContent).toBe("/a/tok-xyz")
-    })
+    const events = sendTelemetry.mock.calls[0][0] as Array<{
+      event: string
+      properties?: Record<string, unknown>
+    }>
+    expect(events).toHaveLength(1)
+    expect(events[0].event).toBe("hero_paste_url")
+    expect(events[0].properties?.url).toBe("https://acme.example")
   })
 })

@@ -19,7 +19,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { ApiError } from "@/api/client"
+import { ApiError, clearTelemetrySessionId } from "@/api/client"
 import { setAuthToken, useApiClient } from "@/api/useApiClient"
 import type {
   AnonymousCrawlClaimResponse,
@@ -114,6 +114,9 @@ export function AuthProvider({ children, skipBootstrap = false }: AuthProviderPr
     setActiveTenantIdState(null)
     setAuthToken(null)
     writeStoredToken(null)
+    // Drop the funnel-telemetry sessionId on logout so the next signed-in
+    // user starts a fresh attribution window (plan section 16).
+    clearTelemetrySessionId()
   }, [])
 
   // Hydrate on mount: if a token is in localStorage, push it into the client

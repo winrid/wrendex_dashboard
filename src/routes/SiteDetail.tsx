@@ -228,6 +228,11 @@ export function SiteDetail() {
               Crawl history
             </Link>
           </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link to={`/t/${tenantId}/sites/${siteId}/settings`}>
+              Settings
+            </Link>
+          </Button>
         </div>
       </div>
 

@@ -81,6 +81,11 @@ export function Audit() {
   })
 
   const onSubmit = handleSubmit(async (values) => {
+    // Funnel telemetry: hero_paste_url fires on every submit, before the
+    // network call so we can attribute drop-offs (plan section 16).
+    void client.sendTelemetry([
+      { event: "hero_paste_url", properties: { url: values.url } },
+    ])
     try {
       const res = await startMut.mutateAsync(values)
       navigate(`/a/${res.token}`)

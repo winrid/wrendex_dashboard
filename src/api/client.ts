@@ -9,6 +9,7 @@ import type {
   Alert,
   AlertListParams,
   AlertQueryResult,
+  AlertRule,
   AnonymousCrawlClaimResponse,
   AnonymousCrawlFull,
   AnonymousCrawlStartResponse,
@@ -17,13 +18,20 @@ import type {
   AuthLoginResponse,
   AuthSignupRequest,
   AuthSignupResponse,
+  BillingSnapshot,
+  ChangePasswordInput,
   CrawlDiff,
   CrawlLogEntry,
   CrawlRun,
+  CreateCheckoutSessionInput,
+  CreateCheckoutSessionResponse,
+  CreatePortalSessionInput,
+  CreatePortalSessionResponse,
   CreateSiteInput,
   CreateTenantInput,
   DirectoryNode,
   DuplicatesResult,
+  EmailChannel,
   EmailedSummaryResponse,
   HealthScorePoint,
   IssuesSummary,
@@ -37,14 +45,20 @@ import type {
   PasswordResetRequest,
   RedirectsResult,
   ResourcesResult,
+  SetupIntent,
   Site,
+  SiteSchedule,
   SiteVerificationConfirmation,
   SiteVerificationRequest,
   SiteVerificationResponse,
   SocialResult,
   StructuredDataResult,
+  TelemetryEvent,
   Tenant,
+  UpdateAlertRuleInput,
+  UpdateEmailChannelInput,
   UpdateSiteInput,
+  UpdateSiteScheduleInput,
 } from "./types"
 
 // ---------------------------------------------------------------------------
@@ -553,6 +567,167 @@ export function createApiClient(opts: CreateApiClientOptions) {
     })
   }
 
+  // -------------------------------------------------------------------------
+  // Billing - BillingController (plan section 11; iter 5 BE 097adde)
+  // -------------------------------------------------------------------------
+
+  function getBilling(tenantId: string): Promise<BillingSnapshot> {
+    return request<BillingSnapshot>(
+      "GET",
+      `/api/tenants/${tenantId}/billing`,
+    )
+  }
+
+  function createCheckoutSession(
+    tenantId: string,
+    input: CreateCheckoutSessionInput,
+  ): Promise<CreateCheckoutSessionResponse> {
+    return request<CreateCheckoutSessionResponse>(
+      "POST",
+      `/api/tenants/${tenantId}/billing/checkout-session`,
+      { body: input },
+    )
+  }
+
+  function createPortalSession(
+    tenantId: string,
+    input: CreatePortalSessionInput,
+  ): Promise<CreatePortalSessionResponse> {
+    return request<CreatePortalSessionResponse>(
+      "POST",
+      `/api/tenants/${tenantId}/billing/portal-session`,
+      { body: input },
+    )
+  }
+
+  // -------------------------------------------------------------------------
+  // Alert rules - AlertRuleController (plan section 8.1; iter 6 BE)
+  // -------------------------------------------------------------------------
+
+  function listAlertRules(siteId: string): Promise<AlertRule[]> {
+    return request<AlertRule[]>("GET", `/api/sites/${siteId}/alert-rules`)
+  }
+
+  function updateAlertRule(
+    siteId: string,
+    ruleId: string,
+    input: UpdateAlertRuleInput,
+  ): Promise<AlertRule> {
+    return request<AlertRule>(
+      "PUT",
+      `/api/sites/${siteId}/alert-rules/${ruleId}`,
+      { body: input },
+    )
+  }
+
+  // -------------------------------------------------------------------------
+  // Email channel - EmailChannelController (plan section 8.2; iter 6 BE)
+  // -------------------------------------------------------------------------
+
+  function getEmailChannel(tenantId: string): Promise<EmailChannel> {
+    return request<EmailChannel>(
+      "GET",
+      `/api/tenants/${tenantId}/email-channel`,
+    )
+  }
+
+  function updateEmailChannel(
+    tenantId: string,
+    input: UpdateEmailChannelInput,
+  ): Promise<EmailChannel> {
+    return request<EmailChannel>(
+      "PUT",
+      `/api/tenants/${tenantId}/email-channel`,
+      { body: input },
+    )
+  }
+
+  // -------------------------------------------------------------------------
+  // Schedule - SiteController.getSchedule / putSchedule (plan section 7;
+  // iter 4 BE-4)
+  // -------------------------------------------------------------------------
+
+  function getSchedule(siteId: string): Promise<SiteSchedule> {
+    return request<SiteSchedule>("GET", `/api/sites/${siteId}/schedule`)
+  }
+
+  function updateSchedule(
+    siteId: string,
+    input: UpdateSiteScheduleInput,
+  ): Promise<SiteSchedule> {
+    return request<SiteSchedule>("PUT", `/api/sites/${siteId}/schedule`, {
+      body: input,
+    })
+  }
+
+  // -------------------------------------------------------------------------
+  // Telemetry - TelemetryController (plan section 16; iter 6 BE).
+  //
+  // PUBLIC route. We deliberately route through a dedicated raw fetch so the
+  // global Authorization header is never attached, the call is best-effort
+  // (errors logged + swallowed), and the per-browser sessionId is folded
+  // onto each event before they go on the wire. Callers MUST NOT depend on
+  // the return value beyond awaiting the promise.
+  // -------------------------------------------------------------------------
+
+  async function sendTelemetry(events: TelemetryEvent[]): Promise<void> {
+    if (!events || events.length === 0) return
+    try {
+      const sessionId = getOrCreateSessionId()
+      const stamped = events.map((e) =>
+        e.sessionId ? e : { ...e, sessionId },
+      )
+      const url = buildUrl(opts.baseUrl, "/api/telemetry/events")
+      // Note: skipAuth at the request-helper level isn't enough; we use a
+      // dedicated fetch path so the response status is never thrown to the
+      // user surface. Telemetry must never break the UX.
+      await fetchImpl(url, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ events: stamped }),
+      })
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("sendTelemetry failed", err)
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Stripe SetupIntent (plan section 1.2 step 3). Phase 1.5 deferral - the
+  // BE doesn't expose a SetupIntent endpoint yet. The FE form is wired
+  // anyway; until the BE ships, this stub returns null + console.warns so
+  // the Signup route can fall back to the "Skip card capture" path.
+  // -------------------------------------------------------------------------
+
+  async function createSetupIntent(
+    _tenantId: string,
+  ): Promise<SetupIntent | null> {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "createSetupIntent: BE endpoint not yet wired (Phase 1.5 deferral).",
+    )
+    return null
+  }
+
+  // -------------------------------------------------------------------------
+  // Account - changePassword. The BE has no /api/auth/change-password yet;
+  // the typed client method throws ApiError(501) so the Settings form can
+  // surface a graceful "wires up later" toast without the call hitting the
+  // network. Replace this body with a real `request(...)` call once the BE
+  // ships.
+  // -------------------------------------------------------------------------
+
+  async function changePassword(_input: ChangePasswordInput): Promise<void> {
+    throw new ApiError(
+      501,
+      "Not Implemented",
+      { message: "changePassword endpoint is not wired on the BE yet" },
+    )
+  }
+
   return {
     // auth
     signup,
@@ -606,7 +781,70 @@ export function createApiClient(opts: CreateApiClientOptions) {
     claimAnonymousCrawl,
     getAnonymousCrawlFull,
     requestEmailedSummary,
+    // billing
+    getBilling,
+    createCheckoutSession,
+    createPortalSession,
+    // alert rules
+    listAlertRules,
+    updateAlertRule,
+    // email channel
+    getEmailChannel,
+    updateEmailChannel,
+    // schedule
+    getSchedule,
+    updateSchedule,
+    // telemetry (public; best-effort)
+    sendTelemetry,
+    // stripe (Phase 1.5 deferral - returns null until BE ships)
+    createSetupIntent,
+    // account
+    changePassword,
   } as const
+}
+
+// ---------------------------------------------------------------------------
+// Telemetry session id (plan section 16). One UUID per browser, stored under
+// `wrendex.sessionId`. Reused across page loads, cleared on logout (the
+// AuthProvider calls clearTelemetrySessionId in its logout path).
+// ---------------------------------------------------------------------------
+
+export const TELEMETRY_SESSION_ID_KEY = "wrendex.sessionId"
+
+function generateSessionId(): string {
+  // crypto.randomUUID is available everywhere we ship to (modern browsers +
+  // jsdom 22+); fall back to a Math.random hex if it's missing so older test
+  // environments still work.
+  const c =
+    typeof globalThis !== "undefined"
+      ? (globalThis as unknown as { crypto?: { randomUUID?: () => string } })
+          .crypto
+      : undefined
+  if (c?.randomUUID) return c.randomUUID()
+  const rand = Math.random().toString(16).slice(2)
+  return `sid_${Date.now().toString(16)}_${rand}`
+}
+
+export function getOrCreateSessionId(): string {
+  if (typeof window === "undefined") return generateSessionId()
+  try {
+    const existing = window.localStorage.getItem(TELEMETRY_SESSION_ID_KEY)
+    if (existing && existing.length > 0) return existing
+    const next = generateSessionId()
+    window.localStorage.setItem(TELEMETRY_SESSION_ID_KEY, next)
+    return next
+  } catch {
+    return generateSessionId()
+  }
+}
+
+export function clearTelemetrySessionId(): void {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.removeItem(TELEMETRY_SESSION_ID_KEY)
+  } catch {
+    // ignore
+  }
 }
 
 /** Build the alert query, omitting undefined keys so a default page=0 set

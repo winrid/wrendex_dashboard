@@ -123,3 +123,54 @@ external component libraries.
   (R.05). Reads `getRedirects`; originating-pages popover.
 - `/t/:tenantId/sites/:siteId/crawls/:crawlId/resources` - ResourcesReport
   (R.08). Reads `getResources`; tabs for Images / Scripts / Stylesheets.
+- `/t/:tenantId/sites/:siteId/settings` - SiteSettings (iter 6 FE-7).
+  Schedule editor (cadence Select; disabled if unverified, with a link
+  to the existing VerificationDialog), 3 canned alert rules with
+  per-rule Switch + SCORE_DROP threshold input, and a danger-zone
+  delete-this-site flow gated on typing the site URL.
+- `/t/:tenantId/billing` - Billing (iter 6 FE-7). Renders the
+  BillingSnapshot, three plan-tier cards, a Stripe Customer Portal
+  button (disabled until `hasPaymentMethod`), and an Invoices "coming
+  soon" stub. Subscribe buttons call `createCheckoutSession` with
+  `priceTier=STARTER|PROFESSIONAL|AGENCY` and redirect to the returned
+  URL.
+- `/t/:tenantId/settings` - Settings (iter 6 FE-7). Tabs: Account
+  (profile, change-password form stub, sessions stub), Tenant (workspace
+  name + email channel editor with kind=MEMBERS|CUSTOM|BOTH and chip
+  recipients), Sites (list + per-site settings link).
+
+## Phase 1.5 deferrals
+
+- **Stripe Elements signup card capture (sec 1.2 step 3)** is
+  scaffolded. The typed client method `createSetupIntent` returns
+  `null + console.warn` until the BE endpoint ships; the Signup route
+  surfaces the "Skip card capture for now" path in that case. When the
+  BE wires SetupIntent + customer creation ahead of signup, swap the
+  scaffolding for a real `<Elements>` provider bound to the returned
+  `client_secret`. Persist the resulting payment method id under the
+  localStorage key `wrendex.pendingPaymentMethodId` so the post-signup
+  branch can call `createCheckoutSession({priceTier: "PROFESSIONAL",
+  trialDays: 14})` to start the trial.
+- **Change password (sec 14.1)** is gated by an `ApiError(501)` stub in
+  `client.ts`; the form catches it and toasts a "wires up later"
+  message. Replace the stub with a real request once the BE ships
+  `/api/auth/change-password`.
+
+## Funnel telemetry contract (sec 2.0 + 16)
+
+- Sink: `client.sendTelemetry(events)` -> `POST /api/telemetry/events`
+  (PUBLIC, no auth header). Best-effort; errors caught + swallowed.
+- Per-browser session id: stored in localStorage under
+  `wrendex.sessionId`, generated on first call, cleared on logout via
+  `clearTelemetrySessionId`. The typed client folds it onto every event.
+- Five events instrumented from the dashboard:
+  1. `hero_paste_url` - Audit submit, props `{url}`.
+  2. `crawl_finished_anonymous` - AnonymousCrawlTeaser when the polled
+     status flips to "completed", props
+     `{token, healthScore, totalIssues}` and `anonymousCrawlToken`.
+  3. `signup_started` - Signup mount when `claimToken` is present, props
+     `{claimToken}`.
+  4. `signup_completed` - Signup success, props
+     `{hasClaimToken, hasCardCaptured}`.
+  5. `trial_active` - first /t/:tenantId/billing visit while
+     `subscriptionStatus === "TRIALING"`, props `{tenantId, plan}`.

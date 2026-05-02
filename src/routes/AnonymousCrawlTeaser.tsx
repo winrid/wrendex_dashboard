@@ -5,7 +5,7 @@
 // switch into the teaser layout: HealthRing + stats strip + 3 visible
 // category rows + a frosted/locked card with the upgrade CTA.
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { useForm } from "react-hook-form"
@@ -164,6 +164,27 @@ export function AnonymousCrawlTeaser() {
 
   const data = q.data
   const isCompleted = data?.status === "completed"
+
+  // Funnel telemetry: crawl_finished_anonymous fires the first time the
+  // polled status flips to "completed" (plan section 16). The ref guards
+  // against double-fire across re-renders / route remounts.
+  const completionFiredRef = useRef(false)
+  useEffect(() => {
+    if (completionFiredRef.current) return
+    if (!data || data.status !== "completed") return
+    completionFiredRef.current = true
+    void client.sendTelemetry([
+      {
+        event: "crawl_finished_anonymous",
+        properties: {
+          token,
+          healthScore: data.healthScore ?? 0,
+          totalIssues: data.issuesSummary.totalIssues,
+        },
+        anonymousCrawlToken: token,
+      },
+    ])
+  }, [data, client, token])
   // The teaser endpoint doesn't expose the crawl duration directly; until
   // the BE wires a finishedAt -> startedAt delta we leave the "Scanned in"
   // stat as a placeholder.

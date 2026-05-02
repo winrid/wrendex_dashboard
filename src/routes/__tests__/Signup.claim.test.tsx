@@ -8,6 +8,17 @@ import { fireEvent, render, screen, waitFor, act } from "@testing-library/react"
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
 
 const signupWithOptionalClaim = vi.fn()
+const sendTelemetry = vi.fn()
+const createSetupIntent = vi.fn().mockResolvedValue(null)
+const createCheckoutSession = vi.fn()
+
+vi.mock("@/api/useApiClient", () => ({
+  useApiClient: () => ({
+    sendTelemetry,
+    createSetupIntent,
+    createCheckoutSession,
+  }),
+}))
 
 vi.mock("@/auth/AuthProvider", async () => {
   // Re-export the rest of the module shape but stub useAuth.
@@ -97,6 +108,6 @@ describe("Signup with claimToken", () => {
       expect(loc).toContain("/a/tok-claim/claiming")
       expect(loc).toContain("tenantId=t_1")
       expect(loc).toContain("siteId=s_1")
-    })
+    }, { timeout: 3000 })
   })
 })

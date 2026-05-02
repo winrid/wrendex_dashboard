@@ -725,3 +725,150 @@ export type UpdateSiteInput = {
   userAgent?: string | null
   jsRendering?: boolean | null
 }
+
+// ---------------------------------------------------------------------------
+// Billing (plan section 11; iter 5 BE 097adde). Mirrors BillingController's
+// snapshot wire-shape and the checkout / portal session POST bodies.
+// ---------------------------------------------------------------------------
+
+export type Plan = "STARTER" | "PROFESSIONAL" | "AGENCY"
+
+/** Mirrors com.bigbug.model.SubscriptionStatus. NONE means the tenant has
+ *  never started a Stripe subscription. */
+export type SubscriptionStatus =
+  | "NONE"
+  | "TRIALING"
+  | "ACTIVE"
+  | "PAST_DUE"
+  | "CANCELLED"
+  | "INCOMPLETE"
+
+/** Read-only snapshot returned by GET /api/tenants/{tenantId}/billing. */
+export type BillingSnapshot = {
+  plan: Plan
+  subscriptionStatus: SubscriptionStatus
+  trialStartedAt: string | null
+  trialEndsAt: string | null
+  hasPaymentMethod: boolean
+}
+
+export type CreateCheckoutSessionInput = {
+  priceTier: Plan
+  returnUrl: string
+  trialDays?: number
+}
+
+export type CreateCheckoutSessionResponse = {
+  url: string
+  sessionId: string
+}
+
+export type CreatePortalSessionInput = {
+  returnUrl: string
+}
+
+export type CreatePortalSessionResponse = {
+  url: string
+}
+
+// ---------------------------------------------------------------------------
+// Alert rules (plan section 8.1; iter 6 BE). Three canned rules per site.
+// The BE auto-seeds them on first GET so the FE can render a stable list.
+// ---------------------------------------------------------------------------
+
+export type AlertRuleKind = "NEW_ERROR" | "SCORE_DROP" | "WEEKLY_DIGEST"
+
+/** Mirrors com.bigbug.model.AlertRule. params is a free-form bag of per-kind
+ *  config (e.g. {threshold: 10} for SCORE_DROP). */
+export type AlertRule = {
+  id: string
+  siteId: string
+  kind: AlertRuleKind | string
+  enabled: boolean
+  params: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
+export type UpdateAlertRuleInput = {
+  enabled?: boolean
+  params?: Record<string, unknown>
+}
+
+// ---------------------------------------------------------------------------
+// Email channel (plan section 8.2; iter 6 BE). Per-tenant config for outbound
+// alert emails. BE auto-seeds a MEMBERS-default row on first GET.
+// ---------------------------------------------------------------------------
+
+export type EmailChannelKind = "MEMBERS" | "CUSTOM" | "BOTH"
+
+export type EmailChannel = {
+  id: string
+  tenantId: string
+  kind: EmailChannelKind
+  recipients: string[]
+  createdAt: string
+  updatedAt: string
+}
+
+export type UpdateEmailChannelInput = {
+  kind: EmailChannelKind
+  recipients: string[]
+}
+
+// ---------------------------------------------------------------------------
+// Schedule (plan section 7; iter 4 BE-4 db0983c). The PUT body only carries
+// cadence; the BE computes nextRunAt from SchedulerWorker.cadenceInterval.
+// ---------------------------------------------------------------------------
+
+export type SiteSchedule = {
+  cadence: SiteCadence
+  nextRunAt: string | null
+  lastScheduledRunAt: string | null
+}
+
+export type UpdateSiteScheduleInput = {
+  cadence: SiteCadence
+}
+
+// ---------------------------------------------------------------------------
+// Telemetry (plan section 16; iter 6 BE). PUBLIC sink (no auth header).
+// One row per event, capped at 100/batch by the BE.
+// ---------------------------------------------------------------------------
+
+export type TelemetryEvent = {
+  /** Event name (e.g. "hero_paste_url", "signup_completed"). */
+  event: string
+  /** Free-form bag of typed properties. JSON-serialisable values only. */
+  properties?: Record<string, unknown>
+  /** Optional client timestamp; the BE falls back to receivedAt if absent. */
+  timestamp?: string
+  /** Per-browser session ID; persisted in localStorage. */
+  sessionId?: string
+  /** Tags an event with the source anonymous-crawl token (funnel
+   *  attribution). */
+  anonymousCrawlToken?: string
+  userId?: string
+  tenantId?: string
+}
+
+// ---------------------------------------------------------------------------
+// Account (plan section 14.1). Password change endpoint is not yet wired on
+// the BE; the typed client method throws a NotImplemented error.
+// ---------------------------------------------------------------------------
+
+export type ChangePasswordInput = {
+  currentPassword: string
+  newPassword: string
+}
+
+// ---------------------------------------------------------------------------
+// Stripe SetupIntent (plan section 1.2 step 3). Phase 1.5 deferral - the BE
+// endpoint is not wired yet, so the typed client method returns null and
+// console.warns. Type left in place so the FE can wire it up unchanged once
+// the BE ships.
+// ---------------------------------------------------------------------------
+
+export type SetupIntent = {
+  clientSecret: string
+}

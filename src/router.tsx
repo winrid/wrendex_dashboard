@@ -19,6 +19,7 @@ import { Schedule } from "@/routes/Schedule"
 import { Team } from "@/routes/Team"
 import { Billing } from "@/routes/Billing"
 import { Settings } from "@/routes/Settings"
+import { SiteSettings } from "@/routes/SiteSettings"
 import { Login } from "@/routes/Login"
 import { Signup } from "@/routes/Signup"
 import { ForgotPassword } from "@/routes/ForgotPassword"
@@ -63,6 +64,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Sites /> },
       { path: "sites", element: <Sites /> },
       { path: "sites/:siteId", element: <SiteDetail /> },
+      { path: "sites/:siteId/settings", element: <SiteSettings /> },
       { path: "sites/:siteId/pages", element: <PageDetail /> },
       { path: "sites/:siteId/crawls", element: <CrawlHistory /> },
       {

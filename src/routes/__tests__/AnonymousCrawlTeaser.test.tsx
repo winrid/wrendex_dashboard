@@ -10,11 +10,13 @@ import type { AnonymousCrawlSummary } from "@/api/types"
 
 const getAnonymousCrawl = vi.fn()
 const requestEmailedSummary = vi.fn()
+const sendTelemetry = vi.fn()
 
 vi.mock("@/api/useApiClient", () => ({
   useApiClient: () => ({
     getAnonymousCrawl,
     requestEmailedSummary,
+    sendTelemetry,
   }),
 }))
 
