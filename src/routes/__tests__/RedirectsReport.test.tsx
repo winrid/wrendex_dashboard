@@ -62,8 +62,6 @@ describe("RedirectsReport", () => {
             "https://acme.example/page-a",
             "https://acme.example/page-b",
           ],
-          renderBlocking: false,
-          duplicateTracker: null,
         },
       ],
       totalChains: 1,

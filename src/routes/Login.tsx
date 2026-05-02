@@ -5,13 +5,21 @@
 // new session before we navigate. ApiError(401) surfaces as an inline
 // "invalid credentials" message; any other failure surfaces as a generic
 // retry hint - users should not be told whether the email exists.
+//
+// ?claimToken= handoff (plan section 2.0): when present, we call
+// claimAnonymousCrawl after a successful login and route the user into
+// the claimed site. Mirrors signupWithOptionalClaim's soft-failure
+// handling: on claim error we toast and still complete the login by
+// landing on the tenant's sites list.
 
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom"
 import { useState } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
+import { toast } from "sonner"
 import { ApiError } from "@/api/client"
+import { useApiClient } from "@/api/useApiClient"
 import { useAuth } from "@/auth/AuthProvider"
 import { Button } from "@/components/ui/button"
 import {
@@ -24,6 +32,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Toaster } from "@/components/ui/sonner"
 
 const schema = z.object({
   email: z.string().email("Enter a valid email"),
@@ -39,11 +48,28 @@ function safeNext(raw: string | null): string {
   return "/"
 }
 
+function describeClaimError(status: number): string {
+  switch (status) {
+    case 401:
+      return "We couldn't link your audit - please try again from the audit page."
+    case 403:
+      return "You don't have access to claim this audit."
+    case 404:
+      return "Your free audit expired before we could link it."
+    case 409:
+      return "This audit has already been claimed by another account."
+    default:
+      return "We couldn't link your audit. You can rerun it from your dashboard."
+  }
+}
+
 export function Login() {
   const auth = useAuth()
+  const client = useApiClient()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const next = safeNext(params.get("next"))
+  const claimToken = params.get("claimToken") ?? undefined
   const [serverError, setServerError] = useState<string | null>(null)
 
   const {
@@ -62,7 +88,33 @@ export function Login() {
   const onSubmit = handleSubmit(async (values) => {
     setServerError(null)
     try {
-      await auth.login(values)
+      const me = await auth.login(values)
+
+      // If the user arrived from the anonymous-crawl teaser, link the audit
+      // into their tenant before routing. Mirrors signupWithOptionalClaim's
+      // soft-failure handling: on any error we toast + still land them in
+      // their workspace.
+      if (claimToken) {
+        const tenantId = me.activeTenantId ?? me.memberships[0]?.tenantId ?? null
+        if (tenantId) {
+          try {
+            const claim = await client.claimAnonymousCrawl(
+              claimToken,
+              tenantId,
+            )
+            navigate(`/t/${tenantId}/sites/${claim.siteId}`, { replace: true })
+            return
+          } catch (e) {
+            const status = e instanceof ApiError ? e.status : 0
+            toast.error(describeClaimError(status))
+            navigate(`/t/${tenantId}/sites`, { replace: true })
+            return
+          }
+        }
+        // No active tenant - fall through to the next-redirect path; the
+        // RootRedirect under RequireAuth will resolve a tenant.
+      }
+
       navigate(next, { replace: true })
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
@@ -75,6 +127,7 @@ export function Login() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
+      <Toaster />
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle>Sign in to Wrendex</CardTitle>

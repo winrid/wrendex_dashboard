@@ -12,10 +12,12 @@ import { useEffect, useMemo, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
+import { ApiError } from "@/api/client"
 import { useApiClient } from "@/api/useApiClient"
 import type {
   AlertRule,
   AlertRuleKind,
+  Plan,
   SiteCadence,
   SiteSchedule,
 } from "@/api/types"
@@ -81,25 +83,61 @@ const CADENCE_OPTIONS: { value: SiteCadence; label: string; description: string 
   },
 ]
 
+// Plan -> max cadence (mirrors PlanGate.assertCanUseCadence on the BE; the
+// BE is authoritative and rejects with 403 + PlanLimitException, but we
+// surface this client-side as a "Pro plan only" badge + disabled options).
+const CADENCE_RANK: Record<SiteCadence, number> = {
+  PAUSED: 0,
+  DAILY: 1,
+  HOURLY: 2,
+  CONTINUOUS: 3,
+}
+
+function maxCadenceForPlan(plan: Plan | null | undefined): number {
+  switch (plan) {
+    case "STARTER":
+      return CADENCE_RANK.DAILY
+    case "PROFESSIONAL":
+      return CADENCE_RANK.HOURLY
+    case "AGENCY":
+      return CADENCE_RANK.CONTINUOUS
+    default:
+      // Unknown / not loaded yet: assume the most permissive cap so we don't
+      // disable options unnecessarily. The BE still rejects the PUT.
+      return CADENCE_RANK.CONTINUOUS
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Schedule section
 // ---------------------------------------------------------------------------
 
 function ScheduleCard({
+  tenantId,
   siteId,
   verified,
   onUnverifiedClick,
 }: {
+  tenantId: string
   siteId: string
   verified: boolean
   onUnverifiedClick: () => void
 }) {
   const client = useApiClient()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const scheduleQ = useQuery({
     queryKey: ["site-schedule", siteId],
     queryFn: () => client.getSchedule(siteId),
     enabled: Boolean(siteId),
+  })
+  // Read the tenant's billing snapshot to drive the plan-gate UI. The BE is
+  // authoritative on PUT (returns 403); this is purely a hint so STARTER
+  // users see the upgrade affordance before clicking Save.
+  const billingQ = useQuery({
+    queryKey: ["billing", tenantId],
+    queryFn: () => client.getBilling(tenantId),
+    enabled: Boolean(tenantId),
   })
   const [cadence, setCadence] = useState<SiteCadence>("PAUSED")
 
@@ -117,13 +155,28 @@ function ScheduleCard({
         next,
       )
     },
-    onError: () => {
+    onError: (err) => {
+      // Plan-gate: PUT /api/sites/{siteId}/schedule rejects with 403 if the
+      // tenant's plan can't reach the requested cadence (BE Phase 1 fix).
+      // Surface this as a focused toast with a link to Billing rather than
+      // the generic "could not update" message.
+      if (err instanceof ApiError && err.status === 403) {
+        toast.error("Your plan doesn't allow this cadence.", {
+          action: {
+            label: "Upgrade",
+            onClick: () => navigate(`/t/${tenantId}/billing`),
+          },
+          description: "Upgrade in Billing to unlock more frequent crawls.",
+        })
+        return
+      }
       toast.error("Could not update schedule.")
     },
   })
 
   const data = scheduleQ.data
   const disabled = !verified
+  const planMax = maxCadenceForPlan(billingQ.data?.plan)
 
   return (
     <Card>
@@ -157,16 +210,30 @@ function ScheduleCard({
               <SelectValue placeholder="Pick a cadence" />
             </SelectTrigger>
             <SelectContent>
-              {CADENCE_OPTIONS.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  <span className="flex flex-col">
-                    <span className="font-medium">{o.label}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {o.description}
+              {CADENCE_OPTIONS.map((o) => {
+                const overPlan = CADENCE_RANK[o.value] > planMax
+                return (
+                  <SelectItem
+                    key={o.value}
+                    value={o.value}
+                    disabled={overPlan}
+                  >
+                    <span className="flex flex-col">
+                      <span className="flex items-center gap-1.5">
+                        <span className="font-medium">{o.label}</span>
+                        {overPlan ? (
+                          <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
+                            Pro plan only
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {o.description}
+                      </span>
                     </span>
-                  </span>
-                </SelectItem>
-              ))}
+                  </SelectItem>
+                )
+              })}
             </SelectContent>
           </Select>
         </div>
@@ -492,6 +559,7 @@ export function SiteSettings() {
       </div>
 
       <ScheduleCard
+        tenantId={tenantId}
         siteId={siteId}
         verified={verified}
         onUnverifiedClick={() => setVerifyOpen(true)}

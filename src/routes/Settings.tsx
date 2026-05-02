@@ -1,22 +1,19 @@
 // Settings page (plan section 14.1 + 14.3 + 8.2). Three-tabs layout:
 //
-//   Account  - profile (read-only email), password change form (stub),
-//              active sessions list (stub).
+//   Account  - profile (read-only email), password change "Coming soon"
+//              notice, active sessions list (stub).
 //   Tenant   - tenant name (read-only), email channel editor.
 //   Sites    - list of sites with a link to per-site settings.
 //
-// All forms are RHF + zod. The change-password endpoint is a Phase 1.5
-// deferral on the BE; the typed client throws ApiError(501) and the form
-// catches it to surface a "wires up later" toast (see AGENTS.md).
+// The change-password endpoint is a Phase 1.5 deferral on the BE; rather
+// than render a form that throws ApiError(501) we surface a small
+// "Coming soon" notice (see AGENTS.md).
 
 import { useEffect, useMemo, useState } from "react"
 import { Link, useParams } from "react-router-dom"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { ApiError } from "@/api/client"
+import { z } from "zod"
 import { useApiClient } from "@/api/useApiClient"
 import { useAuth } from "@/auth/AuthProvider"
 import type {
@@ -53,57 +50,8 @@ import { cn } from "@/lib/utils"
 // Tab: Account
 // ---------------------------------------------------------------------------
 
-const passwordSchema = z
-  .object({
-    currentPassword: z.string().min(1, "Required"),
-    newPassword: z.string().min(8, "Password must be at least 8 characters"),
-    confirmPassword: z.string(),
-  })
-  .refine((v) => v.newPassword === v.confirmPassword, {
-    path: ["confirmPassword"],
-    message: "Passwords do not match",
-  })
-
-type PasswordValues = z.infer<typeof passwordSchema>
-
 function AccountTab() {
   const auth = useAuth()
-  const client = useApiClient()
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors, isSubmitting },
-  } = useForm<PasswordValues>({
-    resolver: zodResolver(passwordSchema),
-    defaultValues: {
-      currentPassword: "",
-      newPassword: "",
-      confirmPassword: "",
-    },
-  })
-
-  const onSubmit = handleSubmit(async (values) => {
-    try {
-      await client.changePassword({
-        currentPassword: values.currentPassword,
-        newPassword: values.newPassword,
-      })
-      toast.success("Password updated")
-      reset()
-    } catch (err) {
-      // The stub throws ApiError(501) until the BE ships. Surface a soft
-      // message instead of an error toast so it reads as deliberate.
-      if (err instanceof ApiError && err.status === 501) {
-        toast.message(
-          "Password change wires up when the BE endpoint lands",
-        )
-        reset()
-        return
-      }
-      toast.error("Could not update password.")
-    }
-  })
 
   return (
     <div className="space-y-6">
@@ -134,56 +82,12 @@ function AccountTab() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form className="space-y-3" onSubmit={onSubmit} noValidate>
-            <div className="space-y-1.5">
-              <Label htmlFor="currentPassword">Current password</Label>
-              <Input
-                id="currentPassword"
-                type="password"
-                autoComplete="current-password"
-                aria-invalid={errors.currentPassword ? true : undefined}
-                {...register("currentPassword")}
-              />
-              {errors.currentPassword ? (
-                <p className="text-xs text-destructive">
-                  {errors.currentPassword.message}
-                </p>
-              ) : null}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="newPassword">New password</Label>
-              <Input
-                id="newPassword"
-                type="password"
-                autoComplete="new-password"
-                aria-invalid={errors.newPassword ? true : undefined}
-                {...register("newPassword")}
-              />
-              {errors.newPassword ? (
-                <p className="text-xs text-destructive">
-                  {errors.newPassword.message}
-                </p>
-              ) : null}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="confirmPassword">Confirm new password</Label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                autoComplete="new-password"
-                aria-invalid={errors.confirmPassword ? true : undefined}
-                {...register("confirmPassword")}
-              />
-              {errors.confirmPassword ? (
-                <p className="text-xs text-destructive">
-                  {errors.confirmPassword.message}
-                </p>
-              ) : null}
-            </div>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Updating..." : "Update password"}
-            </Button>
-          </form>
+          <p
+            className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+            data-testid="change-password-coming-soon"
+          >
+            Coming soon - password change lands when the BE endpoint ships.
+          </p>
         </CardContent>
       </Card>
 

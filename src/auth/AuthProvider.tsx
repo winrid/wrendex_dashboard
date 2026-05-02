@@ -79,7 +79,7 @@ export type AuthContextValue = {
     input: AuthSignupRequest,
     claimToken?: string,
   ) => Promise<SignupWithClaimResult>
-  login: (input: AuthLoginRequest) => Promise<void>
+  login: (input: AuthLoginRequest) => Promise<Me>
   logout: () => void
   setActiveTenant: (tenantId: string) => void
 }
@@ -206,11 +206,12 @@ export function AuthProvider({ children, skipBootstrap = false }: AuthProviderPr
   )
 
   const login = useCallback(
-    async (input: AuthLoginRequest) => {
+    async (input: AuthLoginRequest): Promise<Me> => {
       const res = await client.login(input)
       writeStoredToken(res.sessionToken)
       const me = await client.getMe()
       applyMe(me)
+      return me
     },
     [applyMe, client],
   )

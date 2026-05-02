@@ -9,9 +9,14 @@
 // because the API exposes filter-by-type, not filter-by-category. The
 // catalog still owns category mapping (single source of truth, see
 // AGENTS.md "Repo layout").
+//
+// Deep links: ?siteId=, ?status=, ?crawlRunId= seed initial state. siteId
+// overrides the auto-pick-first-site default; status switches the active
+// tab; crawlRunId narrows alerts to that single crawl (BE Phase 1 fix
+// added the ?crawlRunId= filter on /api/sites/{siteId}/alerts).
 
 import { useEffect, useMemo, useState } from "react"
-import { useParams } from "react-router-dom"
+import { useParams, useSearchParams } from "react-router-dom"
 import {
   useMutation,
   useQuery,
@@ -43,6 +48,14 @@ function statusForTab(tab: TabKey): AlertStatus | undefined {
   return undefined // snoozed - no BE status yet
 }
 
+function tabFromStatusParam(raw: string | null): TabKey {
+  if (!raw) return "open"
+  const upper = raw.toUpperCase()
+  if (upper === "RESOLVED") return "resolved"
+  if (upper === "SNOOZED" || upper === "IGNORED") return "snoozed"
+  return "open"
+}
+
 const DEFAULT_TOOLBAR: AlertsTableToolbarState = {
   pageUrlContains: "",
   severities: [],
@@ -52,11 +65,15 @@ const DEFAULT_TOOLBAR: AlertsTableToolbarState = {
 
 export function Inbox() {
   const { tenantId = "default" } = useParams<{ tenantId: string }>()
+  const [searchParams] = useSearchParams()
+  const initialSiteId = searchParams.get("siteId")
+  const initialTab = tabFromStatusParam(searchParams.get("status"))
+  const crawlRunIdParam = searchParams.get("crawlRunId") || undefined
   const client = useApiClient()
   const queryClient = useQueryClient()
 
-  const [tab, setTab] = useState<TabKey>("open")
-  const [siteId, setSiteId] = useState<string | null>(null)
+  const [tab, setTab] = useState<TabKey>(initialTab)
+  const [siteId, setSiteId] = useState<string | null>(initialSiteId)
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
     pageSize: 25,
@@ -71,7 +88,8 @@ export function Inbox() {
     enabled: Boolean(tenantId),
   })
 
-  // Auto-select the first site once loaded if the user has not picked one.
+  // Auto-select the first site once loaded if the user has not picked one
+  // AND no ?siteId= URL param was provided.
   useEffect(() => {
     if (siteId) return
     const first = sitesQ.data?.[0]
@@ -88,10 +106,11 @@ export function Inbox() {
       severity: sevSingle,
       pageUrlContains: toolbar.pageUrlContains || undefined,
       status: tabStatus,
+      crawlRunId: crawlRunIdParam,
       sort: sorting[0]?.id,
       dir: sorting[0]?.desc ? "desc" : sorting[0] ? "asc" : undefined,
     }),
-    [pagination, sevSingle, toolbar.pageUrlContains, tabStatus, sorting],
+    [pagination, sevSingle, toolbar.pageUrlContains, tabStatus, crawlRunIdParam, sorting],
   )
 
   const alertsQ = useQuery<AlertQueryResult>({

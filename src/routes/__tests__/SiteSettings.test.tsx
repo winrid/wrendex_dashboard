@@ -75,6 +75,13 @@ const updateAlertRule = vi.fn().mockImplementation(
 const deleteSite = vi.fn().mockResolvedValue(undefined)
 const requestSiteVerification = vi.fn()
 const confirmSiteVerification = vi.fn()
+const getBilling = vi.fn().mockResolvedValue({
+  plan: "PROFESSIONAL",
+  subscriptionStatus: "TRIALING",
+  trialStartedAt: "2026-04-30T00:00:00Z",
+  trialEndsAt: "2026-05-14T00:00:00Z",
+  hasPaymentMethod: true,
+})
 
 vi.mock("@/api/useApiClient", () => ({
   useApiClient: () => ({
@@ -86,6 +93,7 @@ vi.mock("@/api/useApiClient", () => ({
     deleteSite,
     requestSiteVerification,
     confirmSiteVerification,
+    getBilling,
   }),
 }))
 
@@ -106,6 +114,13 @@ beforeEach(() => {
     cadence: "DAILY",
     nextRunAt: "2026-05-03T00:00:00Z",
     lastScheduledRunAt: "2026-05-02T00:00:00Z",
+  })
+  getBilling.mockResolvedValue({
+    plan: "PROFESSIONAL",
+    subscriptionStatus: "TRIALING",
+    trialStartedAt: "2026-04-30T00:00:00Z",
+    trialEndsAt: "2026-05-14T00:00:00Z",
+    hasPaymentMethod: true,
   })
   listAlertRules.mockResolvedValue([
     {

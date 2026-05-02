@@ -858,6 +858,7 @@ function alertQuery(p: AlertListParams): Query {
   if (p.pageUrlContains !== undefined) q.pageUrlContains = p.pageUrlContains
   if (p.pageId !== undefined) q.pageId = p.pageId
   if (p.status !== undefined) q.status = p.status
+  if (p.crawlRunId !== undefined) q.crawlRunId = p.crawlRunId
   if (p.sort !== undefined) q.sort = p.sort
   if (p.dir !== undefined) q.dir = p.dir
   return q

@@ -30,10 +30,32 @@ vi.mock("@/api/useApiClient", () => ({
   }),
 }))
 
+vi.mock("@/auth/AuthProvider", () => ({
+  useAuth: () => ({
+    user: { id: "u_1", email: "user@example.com", createdAt: "2026-05-01T00:00:00Z" },
+    memberships: [{ tenantId: "t_1", tenantName: "Acme", role: "OWNER" }],
+    activeTenantId: "t_1",
+    isLoading: false,
+    isAuthed: true,
+    signup: async () => {},
+    signupWithOptionalClaim: async () => ({ tenantId: "t_1" }),
+    login: async () => ({}),
+    logout: () => {},
+    setActiveTenant: () => {},
+  }),
+}))
+
 import { Billing } from "../Billing"
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // Reset the trial_active dedup so cross-test bleed-through doesn't mask
+  // a fresh fire of the telemetry event.
+  try {
+    window.localStorage.clear()
+  } catch {
+    // ignore
+  }
   // Re-prime defaults after vi.clearAllMocks.
   getBilling.mockResolvedValue({
     plan: "PROFESSIONAL",

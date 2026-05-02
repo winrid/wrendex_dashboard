@@ -442,10 +442,6 @@ export type RedirectEntry = {
   hasMetaRefresh: boolean
   /** Pages that link to the redirecting URL (iter 2). */
   originatingPages?: string[] | null
-  /** True when the redirect is on a render-blocking resource (iter 2). */
-  renderBlocking?: boolean | null
-  /** Group key used by the duplicate-redirect tracker (iter 2). */
-  duplicateTracker?: string | null
 }
 
 export type RedirectsResult = {
@@ -525,6 +521,9 @@ export type StructuredDataResult = {
 export type HealthScorePoint = {
   crawlRunId: string
   startedAt: string
+  /** Wall-clock time the crawl finished. Null while the crawl is still
+   *  running; populated post-completion (BE Phase 1 fix). */
+  finishedAt?: string | null
   healthScore: number
   errorCount: number
   warningCount: number
@@ -543,6 +542,9 @@ export type AlertListParams = {
   pageUrlContains?: string
   pageId?: string
   status?: AlertStatus
+  /** Restrict alerts to a single crawl run. Honoured by the
+   *  /api/sites/{siteId}/alerts endpoint (Phase 1 fix). */
+  crawlRunId?: string
   sort?: string
   dir?: "asc" | "desc"
 }
@@ -670,8 +672,15 @@ export type AnonymousCrawlSummary = {
   status: string
   crawlRunId: string | null
   healthScore: number | null
+  /** BE coerces these to 0 when null (Phase 1 fix). */
   pagesCrawled: number
   pagesDiscovered: number
+  /** Wall-clock starts/ends for the crawl. startedAt is always populated
+   *  once the run is queued; finishedAt is null while the crawl is still
+   *  running. Used by the teaser to surface the "Scanned in N seconds"
+   *  proof-of-work stat (Phase 1 fix). */
+  startedAt: string
+  finishedAt: string | null
   issuesSummary: IssuesSummary
   isClaimed: boolean
   claimedByTenantId: string | null

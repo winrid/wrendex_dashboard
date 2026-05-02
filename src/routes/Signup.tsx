@@ -14,14 +14,19 @@
 // and route into the tenant's sites list anyway - the user is signed in
 // and the workspace exists, the crawl just didn't link.
 //
+// Trial-start (Phase 1.5 fallback path until the BE SetupIntent endpoint
+// ships and we can capture the card pre-signup):
+//   After signupWithOptionalClaim succeeds AND the claim mutation lands,
+//   we automatically call createCheckoutSession and window.location.href
+//   to the Stripe Checkout URL with trialDays=14. If the call fails (e.g.
+//   in dev where Stripe isn't configured), we soft-fail with a toast and
+//   the user can still kick off their trial from /billing later.
+//
 // Stripe Elements (plan section 1.2 step 3 - SCAFFOLDING ONLY):
-//   When claimToken is present, an extra "Add payment method" step
-//   surfaces between the basic-info form and the redirect. The step
-//   tries client.createSetupIntent(tenantId); the BE doesn't expose that
-//   endpoint yet, so the stub returns null and we render a "Skip card
-//   capture" path. Once the BE ships SetupIntent + customer-creation
-//   ahead of signup, this branch flips to render PaymentElement against
-//   the returned client_secret.
+//   When claimToken is present, the PaymentMethodScaffolding card renders
+//   a small "we'll redirect after signup" notice. Once the BE ships
+//   SetupIntent + customer-creation ahead of signup, this branch flips to
+//   render PaymentElement against the returned client_secret.
 
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom"
 import { useEffect, useRef, useState } from "react"
@@ -44,26 +49,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Toaster } from "@/components/ui/sonner"
-
-const PENDING_PAYMENT_METHOD_KEY = "wrendex.pendingPaymentMethodId"
-
-function readPendingPaymentMethod(): string | null {
-  if (typeof window === "undefined") return null
-  try {
-    return window.localStorage.getItem(PENDING_PAYMENT_METHOD_KEY)
-  } catch {
-    return null
-  }
-}
-
-function clearPendingPaymentMethod(): void {
-  if (typeof window === "undefined") return
-  try {
-    window.localStorage.removeItem(PENDING_PAYMENT_METHOD_KEY)
-  } catch {
-    // ignore
-  }
-}
 
 const schema = z.object({
   email: z.string().email("Enter a valid email"),
@@ -138,34 +123,45 @@ export function Signup() {
         properties: {
           hasClaimToken: Boolean(claimToken),
           hasCardCaptured,
+          tenantId: pendingTenantIdRef.current,
+          userId: auth.user?.id,
         },
       },
     ])
   }
 
-  // After signup, if the SetupIntent flow succeeded earlier and persisted a
-  // payment method, kick off the trial subscription via createCheckoutSession
-  // (Phase 1.5: the BE currently builds a Checkout flow that lifts the card
-  // again; once the BE wires SetupIntent + subscription start, we'll swap
-  // this for a single API call).
-  const maybeStartTrialFromPendingPm = async (tenantId: string) => {
-    const pending = readPendingPaymentMethod()
-    if (!pending) return
+  // We capture the freshly-created tenantId so the signup_completed event can
+  // tag it before the AuthProvider's /api/me hydration lands in the React
+  // tree (the route is already navigating away by then).
+  const pendingTenantIdRef = useRef<string | undefined>(undefined)
+
+  // After signup completes + the anonymous-crawl claim succeeds, redirect
+  // the user into a Stripe Checkout session with trialDays=14. This is the
+  // Phase 1.5 fallback path until the BE SetupIntent endpoint ships and we
+  // can capture the card pre-signup. We can't actually verify the user
+  // completed Stripe Checkout from here, but recording the intent in the
+  // signup_completed event is enough for the funnel until then.
+  //
+  // Returns true on success (the page is redirecting; the caller should
+  // not also SPA-navigate). Returns false on soft failure (Stripe is
+  // unavailable in dev, the BE returned a non-2xx, etc.) so the caller
+  // can fall through to the site-overview navigation + toast.
+  const startTrialCheckout = async (
+    tenantId: string,
+    siteId: string,
+  ): Promise<boolean> => {
     try {
-      clearPendingPaymentMethod()
       const session = await client.createCheckoutSession(tenantId, {
         priceTier: "PROFESSIONAL",
-        returnUrl: window.location.origin + `/t/${tenantId}/billing`,
+        returnUrl:
+          window.location.origin + `/t/${tenantId}/sites/${siteId}`,
         trialDays: 14,
       })
       toast.success("Starting your 14-day trial...")
       window.location.href = session.url
+      return true
     } catch {
-      // Soft failure: the user is signed in and the tenant exists; surface a
-      // toast and let them start the trial from /billing later.
-      toast.message(
-        "Signed in. Start your trial from the Billing page when you're ready.",
-      )
+      return false
     }
   }
 
@@ -173,32 +169,42 @@ export function Signup() {
     setServerError(null)
     try {
       const result = await auth.signupWithOptionalClaim(values, claimToken)
-      const hasCardCaptured = readPendingPaymentMethod() != null
-      fireSignupCompleted(hasCardCaptured)
+      pendingTenantIdRef.current = result.tenantId
 
       if (claimToken) {
         if (result.claim) {
-          // If the user had captured a card before submitting, kick off the
-          // trial checkout in the background. We don't await it here so
-          // the route change isn't blocked on the (best-effort) Stripe
-          // call; if the call succeeds it sets window.location.href which
-          // will preempt the SPA navigate.
-          void maybeStartTrialFromPendingPm(result.tenantId)
+          // Kick off the trial checkout. On success the browser is already
+          // navigating to Stripe; on soft failure we land on the site
+          // overview and toast a hint about Settings -> Billing.
+          const checkoutOk = await startTrialCheckout(
+            result.tenantId,
+            result.claim.siteId,
+          )
+          fireSignupCompleted(checkoutOk)
+          if (checkoutOk) {
+            return
+          }
+          toast.message(
+            "Trial is not active yet. Add a card from Settings -> Billing to start your 14-day trial.",
+          )
           navigate(
-            `/a/${encodeURIComponent(claimToken)}/claiming?tenantId=${
-              result.tenantId
-            }&siteId=${result.claim.siteId}`,
+            `/t/${result.tenantId}/sites/${result.claim.siteId}`,
             { replace: true },
           )
           return
         }
-        // Soft failure: the user is signed in and the tenant exists; surface
-        // the message and bounce them into the workspace.
+        // Claim soft-fail: the user is signed in and the tenant exists; we
+        // bounce into the workspace and surface the claim error message.
+        // We don't fire trial checkout here because there's no canonical
+        // siteId to land on after Stripe.
+        fireSignupCompleted(false)
         toast.error(describeClaimError(result.claimError?.status ?? 0))
         navigate(`/t/${result.tenantId}/sites`, { replace: true })
         return
       }
 
+      // PATH B (no claim token): the trial CTA lives on /billing, not here.
+      fireSignupCompleted(false)
       navigate("/", { replace: true })
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
@@ -298,74 +304,23 @@ export function Signup() {
 }
 
 // Stripe Elements scaffolding (plan section 1.2 step 3). The BE doesn't
-// expose a SetupIntent endpoint yet (see client.ts createSetupIntent), so
-// for now this renders the "Skip card capture" path with a small note. When
-// the BE ships, swap the early-return for an Elements provider + a
-// PaymentElement bound to the returned client_secret. On submit, persist
-// the payment method id to localStorage under wrendex.pendingPaymentMethodId
-// so the post-signup branch can start the trial subscription.
+// expose a SetupIntent endpoint yet, so we can't capture the card before
+// signup completes. As the Phase 1.5 fallback we redirect the user into
+// Stripe Checkout immediately AFTER the signup + claim land. Once the BE
+// ships SetupIntent + customer-creation pre-signup, swap this for an
+// Elements provider + a PaymentElement bound to the returned client_secret;
+// see AGENTS.md "Phase 1.5 deferrals".
 function PaymentMethodScaffolding() {
-  const client = useApiClient()
-  const [clientSecret, setClientSecret] = useState<string | null>(null)
-  const [resolved, setResolved] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      try {
-        // The tenantId is unknown until signup completes, so we pass an
-        // empty string here; the stub ignores it and the real BE call will
-        // accept either a tenantId-or-null variant once it ships. The
-        // returned null is the documented Phase 1.5 deferral.
-        const res = await client.createSetupIntent("")
-        if (cancelled) return
-        setClientSecret(res?.clientSecret ?? null)
-      } catch {
-        if (!cancelled) setClientSecret(null)
-      } finally {
-        if (!cancelled) setResolved(true)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [client])
-
-  if (!resolved) {
-    return (
-      <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-        Loading payment options...
-      </div>
-    )
-  }
-
-  if (!clientSecret) {
-    return (
-      <div
-        className="rounded-md border bg-muted/40 px-3 py-2 text-xs"
-        data-testid="skip-card-capture"
-      >
-        <a
-          href="#"
-          onClick={(e) => e.preventDefault()}
-          className="font-medium underline hover:text-foreground"
-        >
-          Skip card capture for now
-        </a>
-        <p className="mt-1 text-muted-foreground">
-          We&apos;ll ask for your card when you start a paid plan.
-        </p>
-      </div>
-    )
-  }
-
-  // BE wired path: render PaymentElement here. Left as a marker so the
-  // wiring is visible without pulling Stripe SDK code into a path the BE
-  // can't satisfy yet. See AGENTS.md for the Phase 1.5 deferral note.
   return (
-    <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-      Card capture is ready. (Stripe Elements wiring lands once the BE
-      SetupIntent endpoint ships.)
+    <div
+      className="rounded-md border bg-muted/40 px-3 py-2 text-xs"
+      data-testid="payment-redirect-note"
+    >
+      <p className="font-medium">Payment</p>
+      <p className="mt-1 text-muted-foreground">
+        We&apos;ll redirect you to a secure card capture step after signup
+        to start your 14-day trial.
+      </p>
     </div>
   )
 }

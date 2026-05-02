@@ -9,11 +9,12 @@
 // customer (BillingSnapshot.hasPaymentMethod). Invoice history is a
 // "Coming soon" stub - the BE doesn't expose an invoice list yet.
 
-import { useEffect, useRef } from "react"
+import { useEffect } from "react"
 import { useParams } from "react-router-dom"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { useApiClient } from "@/api/useApiClient"
+import { useAuth } from "@/auth/AuthProvider"
 import type { BillingSnapshot, Plan, SubscriptionStatus } from "@/api/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge-fallback"
@@ -157,9 +158,38 @@ function formatTrialEnd(trialEndsAt: string | null): string {
   }
 }
 
+// Per-tenant localStorage key for the trial_active dedup. We migrate the
+// previous in-memory ref guard to localStorage so a refresh / navigation
+// out and back doesn't re-fire the event for the same tenant.
+const TRIAL_ACTIVE_FIRED_KEY_PREFIX = "wrendex.trialActiveFired."
+
+function trialActiveFiredKey(tenantId: string): string {
+  return TRIAL_ACTIVE_FIRED_KEY_PREFIX + tenantId
+}
+
+function hasFiredTrialActive(tenantId: string): boolean {
+  if (typeof window === "undefined") return false
+  try {
+    return window.localStorage.getItem(trialActiveFiredKey(tenantId)) === "1"
+  } catch {
+    return false
+  }
+}
+
+function markTrialActiveFired(tenantId: string): void {
+  if (typeof window === "undefined") return
+  try {
+    window.localStorage.setItem(trialActiveFiredKey(tenantId), "1")
+  } catch {
+    // ignore quota / disabled storage; worst case the event re-fires
+    // once per surface visit.
+  }
+}
+
 export function Billing() {
   const { tenantId = "default" } = useParams()
   const client = useApiClient()
+  const auth = useAuth()
 
   const billingQ = useQuery({
     queryKey: ["billing", tenantId],
@@ -167,22 +197,25 @@ export function Billing() {
     enabled: Boolean(tenantId),
   })
 
-  // Funnel telemetry: trial_active fires once per visit when the snapshot
-  // shows TRIALING. We use a ref to make sure it doesn't double-fire across
-  // refetches / re-renders.
-  const trialActiveSent = useRef<boolean>(false)
+  // Funnel telemetry: trial_active fires once per (tenant, browser) when
+  // the snapshot shows TRIALING. The fire-state lives in localStorage so a
+  // refresh / nav-away-and-back doesn't re-fire the event.
   useEffect(() => {
-    if (trialActiveSent.current) return
     const data = billingQ.data
     if (!data || data.subscriptionStatus !== "TRIALING") return
-    trialActiveSent.current = true
+    if (hasFiredTrialActive(tenantId)) return
+    markTrialActiveFired(tenantId)
     void client.sendTelemetry([
       {
         event: "trial_active",
-        properties: { tenantId, plan: data.plan },
+        properties: {
+          tenantId,
+          plan: data.plan,
+          userId: auth.user?.id,
+        },
       },
     ])
-  }, [billingQ.data, client, tenantId])
+  }, [billingQ.data, client, tenantId, auth.user?.id])
 
   const checkoutMut = useMutation({
     mutationFn: (priceTier: Plan) =>

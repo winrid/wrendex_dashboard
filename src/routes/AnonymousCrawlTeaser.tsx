@@ -7,11 +7,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
-import { useMutation, useQuery } from "@tanstack/react-query"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { z } from "zod"
-import { toast } from "sonner"
+import { useQuery } from "@tanstack/react-query"
 import { isApiError } from "@/api/client"
 import { useApiClient } from "@/api/useApiClient"
 import type { AnonymousCrawlSummary } from "@/api/types"
@@ -25,18 +21,8 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Toaster } from "@/components/ui/sonner"
-import { LockIcon, MailIcon, AlertCircleIcon } from "lucide-react"
+import { LockIcon, AlertCircleIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { siteDisplayName } from "@/lib/format"
 
@@ -55,11 +41,6 @@ const LOCKED_CATEGORY_LABELS = [
   "Images",
   "Security",
 ]
-
-const emailSchema = z.object({
-  email: z.string().email("Enter a valid email"),
-})
-type EmailValues = z.infer<typeof emailSchema>
 
 function statsStrip(summary: AnonymousCrawlSummary, scanSeconds: number | null) {
   return [
@@ -140,7 +121,6 @@ export function AnonymousCrawlTeaser() {
   const navigate = useNavigate()
   const client = useApiClient()
   const [pollStartedAt] = useState<number>(() => Date.now())
-  const [emailOpen, setEmailOpen] = useState(false)
 
   const q = useQuery({
     queryKey: ["anonymous-crawl", token],
@@ -165,9 +145,9 @@ export function AnonymousCrawlTeaser() {
   const data = q.data
   const isCompleted = data?.status === "completed"
 
-  // Funnel telemetry: crawl_finished_anonymous fires the first time the
-  // polled status flips to "completed" (plan section 16). The ref guards
-  // against double-fire across re-renders / route remounts.
+  // Funnel telemetry: crawl_finished_anonymous + teaser_viewed both fire the
+  // first time the polled status flips to "completed" (plan section 16).
+  // The refs guard against double-fire across re-renders / route remounts.
   const completionFiredRef = useRef(false)
   useEffect(() => {
     if (completionFiredRef.current) return
@@ -185,10 +165,38 @@ export function AnonymousCrawlTeaser() {
       },
     ])
   }, [data, client, token])
-  // The teaser endpoint doesn't expose the crawl duration directly; until
-  // the BE wires a finishedAt -> startedAt delta we leave the "Scanned in"
-  // stat as a placeholder.
-  const scanSeconds: number | null = null
+
+  const teaserViewedFiredRef = useRef(false)
+  useEffect(() => {
+    if (teaserViewedFiredRef.current) return
+    if (!data || data.status !== "completed") return
+    teaserViewedFiredRef.current = true
+    void client.sendTelemetry([
+      {
+        event: "teaser_viewed",
+        properties: {
+          healthScore: data.healthScore ?? 0,
+          totalIssues: data.issuesSummary.totalIssues,
+        },
+        anonymousCrawlToken: token,
+      },
+    ])
+  }, [data, client, token])
+
+  // Scan duration ("Scanned in N seconds" proof-of-work). The BE now ships
+  // startedAt + finishedAt on the AnonymousCrawlSummary; we compute the
+  // delta locally so a re-derivation isn't a round-trip.
+  const scanSeconds: number | null =
+    data?.startedAt && data?.finishedAt
+      ? Math.max(
+          0,
+          Math.round(
+            (new Date(data.finishedAt).getTime() -
+              new Date(data.startedAt).getTime()) /
+              1000,
+          ),
+        )
+      : null
 
   // ---------- error states ----------
 
@@ -351,18 +359,14 @@ export function AnonymousCrawlTeaser() {
               <Button onClick={onStartTrial}>
                 Start 14 day trial - see the full report
               </Button>
-              <Button
-                variant="outline"
-                onClick={() => setEmailOpen(true)}
-              >
-                <MailIcon />
-                <span>Email me the summary</span>
-              </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Already have an account?{" "}
-              <Link to="/login" className="underline hover:text-foreground">
-                Sign in
+              Or sign up to keep this report.{" "}
+              <Link
+                to={`/login?claimToken=${encodeURIComponent(token)}`}
+                className="underline hover:text-foreground"
+              >
+                Already have an account? Sign in
               </Link>{" "}
               to claim this audit.
             </p>
@@ -370,11 +374,6 @@ export function AnonymousCrawlTeaser() {
         </Card>
       </div>
 
-      <EmailSummaryDialog
-        open={emailOpen}
-        onOpenChange={setEmailOpen}
-        token={token}
-      />
     </PublicShell>
   )
 }
@@ -430,76 +429,4 @@ function NotFoundView() {
   )
 }
 
-function EmailSummaryDialog({
-  open,
-  onOpenChange,
-  token,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  token: string
-}) {
-  const client = useApiClient()
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors, isSubmitting },
-  } = useForm<EmailValues>({
-    resolver: zodResolver(emailSchema),
-    defaultValues: { email: "" },
-  })
-
-  const sendMut = useMutation({
-    mutationFn: (values: EmailValues) =>
-      client.requestEmailedSummary(token, values.email),
-  })
-
-  const onSubmit = handleSubmit(async (values) => {
-    try {
-      await sendMut.mutateAsync(values)
-      toast.success("We'll email you when this ships.")
-      reset()
-      onOpenChange(false)
-    } catch {
-      toast.error("Could not queue your request. Please try again.")
-    }
-  })
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Email me the summary</DialogTitle>
-          <DialogDescription>
-            We&apos;ll send a copy of the top issues to your inbox.
-          </DialogDescription>
-        </DialogHeader>
-        <form className="space-y-3" onSubmit={onSubmit} noValidate>
-          <div className="space-y-1.5">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              autoComplete="email"
-              aria-invalid={errors.email ? true : undefined}
-              {...register("email")}
-            />
-            {errors.email ? (
-              <p className="text-xs text-destructive">{errors.email.message}</p>
-            ) : null}
-          </div>
-          <DialogFooter>
-            <Button
-              type="submit"
-              disabled={isSubmitting || sendMut.isPending}
-            >
-              {sendMut.isPending ? "Queuing..." : "Send it"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  )
-}
 

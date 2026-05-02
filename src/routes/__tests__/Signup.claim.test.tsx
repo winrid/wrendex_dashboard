@@ -1,7 +1,7 @@
 // Asserts that Signup with ?claimToken=... calls the claim mutation
-// after signup completes. We mock the AuthProvider's
-// signupWithOptionalClaim helper directly so the test boundary is the
-// route component, not the network.
+// after signup completes, then attempts to start the trial via Stripe
+// Checkout. On createCheckoutSession soft-failure (Stripe unavailable)
+// the user lands on the claimed site overview and a toast surfaces.
 
 import { describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen, waitFor, act } from "@testing-library/react"
@@ -9,13 +9,11 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
 
 const signupWithOptionalClaim = vi.fn()
 const sendTelemetry = vi.fn()
-const createSetupIntent = vi.fn().mockResolvedValue(null)
 const createCheckoutSession = vi.fn()
 
 vi.mock("@/api/useApiClient", () => ({
   useApiClient: () => ({
     sendTelemetry,
-    createSetupIntent,
     createCheckoutSession,
   }),
 }))
@@ -56,13 +54,17 @@ function renderRoute(initial: string) {
         <Route path="/signup" element={<Signup />} />
         <Route path="/a/:token/claiming" element={<LocationProbe />} />
         <Route path="/t/:tenantId/sites" element={<LocationProbe />} />
+        <Route
+          path="/t/:tenantId/sites/:siteId"
+          element={<LocationProbe />}
+        />
       </Routes>
     </MemoryRouter>,
   )
 }
 
 describe("Signup with claimToken", () => {
-  it("calls signupWithOptionalClaim with the claim token, then routes to the claiming view", async () => {
+  it("calls signupWithOptionalClaim with the claim token, then attempts a Stripe Checkout and lands on the site overview when checkout fails", async () => {
     signupWithOptionalClaim.mockResolvedValue({
       tenantId: "t_1",
       claim: {
@@ -71,6 +73,8 @@ describe("Signup with claimToken", () => {
         claimedAt: "2026-05-02T00:00:00Z",
       },
     })
+    // Soft-fail Stripe so the route falls through to the SPA navigate.
+    createCheckoutSession.mockRejectedValue(new Error("Stripe unavailable"))
 
     renderRoute("/signup?claimToken=tok-claim&suggestedTenant=acme.example")
 
@@ -103,11 +107,21 @@ describe("Signup with claimToken", () => {
       )
     })
 
+    // Stripe Checkout was attempted with the right shape.
+    await waitFor(() => {
+      expect(createCheckoutSession).toHaveBeenCalled()
+    })
+    const [tenantId, args] = createCheckoutSession.mock.calls[0]
+    expect(tenantId).toBe("t_1")
+    expect(args.priceTier).toBe("PROFESSIONAL")
+    expect(args.trialDays).toBe(14)
+    expect(typeof args.returnUrl).toBe("string")
+    expect(args.returnUrl).toContain("/t/t_1/sites/s_1")
+
+    // On checkout soft-fail we land on the site overview.
     await waitFor(() => {
       const loc = screen.getByTestId("loc").textContent ?? ""
-      expect(loc).toContain("/a/tok-claim/claiming")
-      expect(loc).toContain("tenantId=t_1")
-      expect(loc).toContain("siteId=s_1")
+      expect(loc).toContain("/t/t_1/sites/s_1")
     }, { timeout: 3000 })
   })
 })

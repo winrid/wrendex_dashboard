@@ -87,9 +87,10 @@ export function PageDetail() {
     tenantId: string
     siteId: string
   }>()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const url = searchParams.get("url") ?? ""
   const crawlIdFromQuery = searchParams.get("crawlId")
+  const tabParam = searchParams.get("tab") ?? "overview"
   const client = useApiClient()
   const queryClient = useQueryClient()
 
@@ -155,7 +156,25 @@ export function PageDetail() {
         siteId={siteId}
       />
 
-      <Tabs defaultValue="overview">
+      <Tabs
+        value={tabParam}
+        onValueChange={(next) => {
+          // Mirror the active tab into ?tab= so deep links and refreshes
+          // preserve the user's current pane.
+          setSearchParams(
+            (prev) => {
+              const params = new URLSearchParams(prev)
+              if (next === "overview") {
+                params.delete("tab")
+              } else {
+                params.set("tab", next)
+              }
+              return params
+            },
+            { replace: true },
+          )
+        }}
+      >
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="performance">Performance</TabsTrigger>
