@@ -17,6 +17,7 @@ import type {
   AuthLoginResponse,
   AuthSignupRequest,
   AuthSignupResponse,
+  CrawlDiff,
   CrawlLogEntry,
   CrawlRun,
   CreateSiteInput,
@@ -345,6 +346,22 @@ export function createApiClient(opts: CreateApiClientOptions) {
     return request<CrawlRun>("GET", `/api/crawls/${crawlRunId}`)
   }
 
+  /**
+   * Diff the alerts of two crawls of the same site. Backed by GET
+   * /api/crawls/{crawlId}/diff?against={prevCrawlId} (iter 4 BE-4 commit
+   * db0983c). Returns three partitions - new / resolved / persisted - each
+   * hard-capped at the backend's DIFF_MAX with a sibling truncation boolean.
+   * Used by the SiteDetail regression strip (plan section 2.5).
+   */
+  function getCrawlDiff(
+    crawlId: string,
+    params: { against: string },
+  ): Promise<CrawlDiff> {
+    return request<CrawlDiff>("GET", `/api/crawls/${crawlId}/diff`, {
+      query: { against: params.against },
+    })
+  }
+
   // -------------------------------------------------------------------------
   // Reports - ReportController
   // -------------------------------------------------------------------------
@@ -561,6 +578,7 @@ export function createApiClient(opts: CreateApiClientOptions) {
     startCrawlAsync,
     listCrawlsBySite,
     getCrawl,
+    getCrawlDiff,
     // reports
     listCrawlPages,
     listCrawlAlerts,

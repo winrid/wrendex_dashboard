@@ -39,6 +39,20 @@ export function formatDurationMs(ms: number | null | undefined): string {
   return `${hours}h ${remMin}m`
 }
 
+/** Pretty-prints a byte count as KB / MB / GB with one decimal of precision.
+ *  Returns "-" for null / undefined / non-positive inputs so the resources
+ *  table can render a fallback without per-cell branching. */
+export function formatBytes(bytes: number | null | undefined): string {
+  if (bytes == null || !Number.isFinite(bytes) || bytes <= 0) return "-"
+  if (bytes < 1024) return `${bytes} B`
+  const kb = bytes / 1024
+  if (kb < 1024) return `${kb.toFixed(1)} KB`
+  const mb = kb / 1024
+  if (mb < 1024) return `${mb.toFixed(1)} MB`
+  const gb = mb / 1024
+  return `${gb.toFixed(2)} GB`
+}
+
 /** Pretty-prints the cadence enum for the cadence pill on SiteDetail. */
 export function formatCadence(cadence: string | null | undefined): string {
   if (!cadence || cadence === "PAUSED") return "Not scheduled"

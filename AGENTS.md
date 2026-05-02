@@ -108,3 +108,18 @@ success or `/t/{tenantId}/sites` with a toast on failure. The
 `pnpm dlx shadcn@latest add <name>`. Then edit the generated file in
 `src/components/ui/<name>.tsx` if you need to. Do NOT depend on
 external component libraries.
+
+## Routes shipped to date (non-exhaustive)
+
+- `/t/:tenantId/sites/:siteId` - SiteDetail (overview, ring, sparkline,
+  regression strip, issue queue).
+- `/t/:tenantId/sites/:siteId/pages` - PageDetail. Reads `?url=...` and an
+  optional `?crawlId=...`; resolves the latest completed crawl when the
+  crawl id is omitted. Tabs: Overview / Performance / Links / Resources /
+  Structured data / Hreflang / Alerts.
+- `/t/:tenantId/sites/:siteId/crawls/:crawlId/pages` - PageExplorer
+  (R.02). Server-paginated grid over `explorePages`; size capped at 200.
+- `/t/:tenantId/sites/:siteId/crawls/:crawlId/redirects` - RedirectsReport
+  (R.05). Reads `getRedirects`; originating-pages popover.
+- `/t/:tenantId/sites/:siteId/crawls/:crawlId/resources` - ResourcesReport
+  (R.08). Reads `getResources`; tabs for Images / Scripts / Stylesheets.

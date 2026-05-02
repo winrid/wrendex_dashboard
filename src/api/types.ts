@@ -347,6 +347,31 @@ export type AlertQueryResult = {
   size: number
 }
 
+/** Type alias kept for consumers that prefer the plan-canonical name; same
+ *  shape as AlertQueryResult. */
+export type AlertList = AlertQueryResult
+
+/** Response of GET /api/crawls/{crawlId}/diff?against={prevCrawlId}. Backed
+ *  by CrawlController.getCrawlDiff (iter 4 BE-4). The three lists are each
+ *  hard-capped at the BE's DIFF_MAX (currently 200); the *Truncated booleans
+ *  flip when the underlying set was larger. The partition rules:
+ *
+ *   - new: alerts present in `crawlId` whose first stamping post-dates the
+ *     previous crawl's startedAt.
+ *   - resolved: alerts present in the previous crawl that the current crawl
+ *     did not refresh (no row stamped with the current crawlRunId).
+ *   - persisted: alerts present in BOTH crawls, intersection by
+ *     (siteId, pageUrl, type).
+ */
+export type CrawlDiff = {
+  new: Alert[]
+  resolved: Alert[]
+  persisted: Alert[]
+  newTruncated: boolean
+  resolvedTruncated: boolean
+  persistedTruncated: boolean
+}
+
 export type CategorySummary = {
   category: string
   errorCount: number

@@ -7,6 +7,10 @@ import { CrawlHistory } from "@/routes/CrawlHistory"
 import { CrawlDetailComingSoon } from "@/routes/CrawlDetailComingSoon"
 import { IssueCategoryDetail } from "@/routes/IssueCategoryDetail"
 import { IssueTypeDetail } from "@/routes/IssueTypeDetail"
+import { PageExplorer } from "@/routes/PageExplorer"
+import { PageDetail } from "@/routes/PageDetail"
+import { RedirectsReport } from "@/routes/RedirectsReport"
+import { ResourcesReport } from "@/routes/ResourcesReport"
 import { SiteInbox } from "@/routes/SiteInbox"
 import { Inbox } from "@/routes/Inbox"
 import { Reports } from "@/routes/Reports"
@@ -59,10 +63,23 @@ export const router = createBrowserRouter([
       { index: true, element: <Sites /> },
       { path: "sites", element: <Sites /> },
       { path: "sites/:siteId", element: <SiteDetail /> },
+      { path: "sites/:siteId/pages", element: <PageDetail /> },
       { path: "sites/:siteId/crawls", element: <CrawlHistory /> },
       {
         path: "sites/:siteId/crawls/:crawlId",
         element: <CrawlDetailComingSoon />,
+      },
+      {
+        path: "sites/:siteId/crawls/:crawlId/pages",
+        element: <PageExplorer />,
+      },
+      {
+        path: "sites/:siteId/crawls/:crawlId/redirects",
+        element: <RedirectsReport />,
+      },
+      {
+        path: "sites/:siteId/crawls/:crawlId/resources",
+        element: <ResourcesReport />,
       },
       {
         path: "crawls/:crawlId/issues/category/:categoryId",

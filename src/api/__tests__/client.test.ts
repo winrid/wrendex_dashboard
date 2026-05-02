@@ -8,6 +8,7 @@ import {
 import type {
   Alert,
   AlertQueryResult,
+  CrawlDiff,
   CrawlLogEntry,
   CrawlRun,
   DirectoryNode,
@@ -47,6 +48,7 @@ describe("createApiClient", () => {
       "startCrawlAsync",
       "listCrawlsBySite",
       "getCrawl",
+      "getCrawlDiff",
       "listCrawlPages",
       "listCrawlAlerts",
       "listSiteAlerts",
@@ -165,6 +167,11 @@ describe("endpoint method return types", () => {
       deleteSite: c.deleteSite satisfies (t: string, s: string) => Promise<undefined>,
       startCrawlSync: c.startCrawlSync satisfies (s: string) => Promise<CrawlRun>,
       listCrawlsBySite: c.listCrawlsBySite satisfies (s: string) => Promise<CrawlRun[]>,
+      getCrawlDiff:
+        c.getCrawlDiff satisfies (
+          c: string,
+          p: { against: string },
+        ) => Promise<CrawlDiff>,
       listCrawlPages: c.listCrawlPages satisfies (c: string) => Promise<Page[]>,
       listCrawlAlerts:
         c.listCrawlAlerts satisfies (c: string) => Promise<AlertQueryResult>,

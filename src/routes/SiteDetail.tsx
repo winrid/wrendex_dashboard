@@ -17,6 +17,7 @@ import { ExternalLinkIcon, PlayIcon, PauseIcon } from "lucide-react"
 import { HealthRing } from "@/components/health-ring/HealthRing"
 import { HealthSparkline } from "@/components/site-detail/HealthSparkline"
 import { IssueQueue } from "@/components/site-detail/IssueQueue"
+import { RegressionStrip } from "@/components/site-detail/RegressionStrip"
 import { CrawlRunningView } from "@/components/site-detail/CrawlRunningView"
 import { VerificationDialog } from "@/components/site-verification/VerificationDialog"
 import {
@@ -34,6 +35,20 @@ function pickLatestCompleted(runs: CrawlRun[] | undefined): CrawlRun | null {
         new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
     )
   return completed[0] ?? null
+}
+
+/** Picks the SECOND most-recent completed crawl in the run list. The
+ *  regression strip diffs the latest completed run against this one; when
+ *  no second entry exists the strip is hidden. */
+function pickPreviousCompleted(runs: CrawlRun[] | undefined): CrawlRun | null {
+  if (!runs || runs.length === 0) return null
+  const completed = runs
+    .filter((r) => r.status === "completed")
+    .sort(
+      (a, b) =>
+        new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
+    )
+  return completed[1] ?? null
 }
 
 function pickLatestRun(runs: CrawlRun[] | undefined): CrawlRun | null {
@@ -73,6 +88,10 @@ export function SiteDetail() {
 
   const latestCompleted = useMemo(
     () => pickLatestCompleted(runsQ.data),
+    [runsQ.data],
+  )
+  const previousCompleted = useMemo(
+    () => pickPreviousCompleted(runsQ.data),
     [runsQ.data],
   )
   const latestRun = useMemo(() => pickLatestRun(runsQ.data), [runsQ.data])
@@ -244,6 +263,16 @@ export function SiteDetail() {
           />
         </div>
       </div>
+
+      {/* 2.5 Regression strip - hidden when there is no prior crawl. */}
+      {latestCrawlId && previousCompleted ? (
+        <RegressionStrip
+          tenantId={tenantId}
+          siteId={siteId}
+          crawlId={latestCrawlId}
+          previousCrawlId={previousCompleted.id}
+        />
+      ) : null}
 
       {/* 2.4 Issue queue */}
       {latestCrawlId && issuesQ.data ? (
