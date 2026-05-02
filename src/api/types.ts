@@ -513,6 +513,85 @@ export type CreateTenantInput = {
   name: string
 }
 
+// ---------------------------------------------------------------------------
+// Auth (plan section 0.3a). Mirrors the wire shapes documented by the
+// backend AuthController; see backend commit a2a85d21.
+// ---------------------------------------------------------------------------
+
+export type Role = "OWNER" | "ADMIN" | "EDITOR" | "VIEWER"
+
+export type User = {
+  id: string
+  email: string
+  createdAt: string
+}
+
+export type Membership = {
+  tenantId: string
+  tenantName: string
+  role: Role
+}
+
+export type Me = {
+  user: User
+  memberships: Membership[]
+  activeTenantId: string | null
+}
+
+export type AuthSignupRequest = {
+  email: string
+  password: string
+  tenantName: string
+}
+
+export type AuthSignupResponse = {
+  sessionToken: string
+  user: User
+  tenant: Tenant
+  role: Role
+}
+
+export type AuthLoginRequest = {
+  email: string
+  password: string
+}
+
+export type AuthLoginResponse = {
+  sessionToken: string
+  user: User
+}
+
+export type PasswordResetRequest = {
+  email: string
+}
+
+export type PasswordResetConfirm = {
+  token: string
+  newPassword: string
+}
+
+// ---------------------------------------------------------------------------
+// Site verification (plan section 0.3a). Methods returned by the backend
+// match the wire literals exactly.
+// ---------------------------------------------------------------------------
+
+export type SiteVerificationMethod = "DNS_TXT" | "META_TAG"
+
+export type SiteVerificationRequest = {
+  method: SiteVerificationMethod
+}
+
+export type SiteVerificationResponse = {
+  method: SiteVerificationMethod
+  token: string
+  instructions: string
+}
+
+export type SiteVerificationConfirmation = {
+  verified: boolean
+  lastCheckedAt: string
+}
+
 export type CreateSiteInput = {
   url: string
   maxPages?: number | null

@@ -9,6 +9,10 @@ import type {
   Alert,
   AlertListParams,
   AlertQueryResult,
+  AuthLoginRequest,
+  AuthLoginResponse,
+  AuthSignupRequest,
+  AuthSignupResponse,
   CrawlLogEntry,
   CrawlRun,
   CreateSiteInput,
@@ -19,12 +23,18 @@ import type {
   IssuesSummary,
   LinkExploreParams,
   LinkResult,
+  Me,
   Page,
   PageExploreParams,
   PageResult,
+  PasswordResetConfirm,
+  PasswordResetRequest,
   RedirectsResult,
   ResourcesResult,
   Site,
+  SiteVerificationConfirmation,
+  SiteVerificationRequest,
+  SiteVerificationResponse,
   SocialResult,
   StructuredDataResult,
   Tenant,
@@ -65,8 +75,13 @@ export type AuthHeaderProvider = () =>
 export type CreateApiClientOptions = {
   baseUrl: string
   /** Returns headers to merge into every request (e.g. Authorization).
-   *  Placeholder for the auth work landing in plan section 0.3a. */
+   *  Wired up to the auth token store in plan section 0.3a; see
+   *  useApiClient.ts for the singleton's wiring. */
   getAuthHeader?: AuthHeaderProvider
+  /** Side-effect setter the auth methods call after login/signup/logout to
+   *  keep the in-memory bearer token in sync without a round-trip through
+   *  the AuthProvider. The provider still writes to localStorage. */
+  setAuthToken?: (token: string | null) => void
   /** Override the global fetch (handy for tests). */
   fetchImpl?: typeof fetch
 }
@@ -131,6 +146,76 @@ export function createApiClient(opts: CreateApiClientOptions) {
       throw new ApiError(res.status, message, body)
     }
     return body as T
+  }
+
+  // -------------------------------------------------------------------------
+  // Auth - AuthController (plan section 0.3a)
+  // -------------------------------------------------------------------------
+
+  async function signup(input: AuthSignupRequest): Promise<AuthSignupResponse> {
+    const res = await request<AuthSignupResponse>("POST", "/api/auth/signup", {
+      body: input,
+    })
+    opts.setAuthToken?.(res.sessionToken)
+    return res
+  }
+
+  async function login(input: AuthLoginRequest): Promise<AuthLoginResponse> {
+    const res = await request<AuthLoginResponse>("POST", "/api/auth/login", {
+      body: input,
+    })
+    opts.setAuthToken?.(res.sessionToken)
+    return res
+  }
+
+  async function logout(): Promise<void> {
+    try {
+      await request<undefined>("POST", "/api/auth/logout")
+    } finally {
+      opts.setAuthToken?.(null)
+    }
+  }
+
+  function requestPasswordReset(input: PasswordResetRequest): Promise<undefined> {
+    return request<undefined>("POST", "/api/auth/password-reset/request", {
+      body: input,
+    })
+  }
+
+  function confirmPasswordReset(
+    input: PasswordResetConfirm,
+  ): Promise<undefined> {
+    return request<undefined>("POST", "/api/auth/password-reset/confirm", {
+      body: input,
+    })
+  }
+
+  function getMe(): Promise<Me> {
+    return request<Me>("GET", "/api/me")
+  }
+
+  // -------------------------------------------------------------------------
+  // Site verification (plan section 0.3a)
+  // -------------------------------------------------------------------------
+
+  function requestSiteVerification(
+    siteId: string,
+    input: SiteVerificationRequest,
+  ): Promise<SiteVerificationResponse> {
+    return request<SiteVerificationResponse>(
+      "POST",
+      `/api/sites/${siteId}/verify`,
+      { body: input },
+    )
+  }
+
+  function confirmSiteVerification(
+    siteId: string,
+  ): Promise<SiteVerificationConfirmation> {
+    return request<SiteVerificationConfirmation>(
+      "POST",
+      `/api/sites/${siteId}/verify/confirm`,
+    )
   }
 
   // -------------------------------------------------------------------------
@@ -320,6 +405,16 @@ export function createApiClient(opts: CreateApiClientOptions) {
   }
 
   return {
+    // auth
+    signup,
+    login,
+    logout,
+    requestPasswordReset,
+    confirmPasswordReset,
+    getMe,
+    // site verification
+    requestSiteVerification,
+    confirmSiteVerification,
     // tenants
     listTenants,
     createTenant,

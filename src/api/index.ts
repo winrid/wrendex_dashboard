@@ -3,5 +3,11 @@
 
 export { ApiError, createApiClient, isApiError } from "./client"
 export type { ApiClient, AuthHeaderProvider, CreateApiClientOptions } from "./client"
-export { useApiClient } from "./useApiClient"
+export {
+  __resetApiClientForTests,
+  getApiClient,
+  getAuthToken,
+  setAuthToken,
+  useApiClient,
+} from "./useApiClient"
 export type * from "./types"

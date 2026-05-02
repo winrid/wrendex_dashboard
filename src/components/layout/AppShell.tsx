@@ -1,4 +1,12 @@
-import { Link, NavLink, Outlet, useLocation, useParams } from "react-router-dom"
+import { useEffect } from "react"
+import {
+  Link,
+  NavLink,
+  Outlet,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router-dom"
 import {
   Sidebar,
   SidebarContent,
@@ -19,6 +27,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
@@ -28,6 +39,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { ThemeToggle } from "./ThemeToggle"
 import { CommandPalette } from "./CommandPalette"
 import { getNavItems } from "./nav-items"
+import { useAuth } from "@/auth/AuthProvider"
 
 function SidebarNav() {
   const location = useLocation()
@@ -54,31 +66,66 @@ function SidebarNav() {
   )
 }
 
+function initialFromEmail(email: string): string {
+  return email.length > 0 ? email[0]!.toUpperCase() : "?"
+}
+
 function UserMenu() {
+  const { user, memberships, logout } = useAuth()
+  const navigate = useNavigate()
+  const { tenantId = "default" } = useParams()
+  const email = user?.email ?? ""
+  const initial = initialFromEmail(email)
+
+  const onProfile = () => {
+    navigate(`/t/${tenantId}/settings`)
+  }
+  const onSwitchTenant = (tid: string) => {
+    navigate(`/t/${tid}/sites`)
+  }
+  const onSignOut = () => {
+    logout()
+    navigate("/login", { replace: true })
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="sm" className="gap-2">
           <div className="flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-medium">
-            DW
+            {initial}
           </div>
-          <span className="hidden text-sm font-medium sm:inline">Dan W.</span>
+          <span className="hidden text-sm font-medium sm:inline">{email}</span>
           <ChevronDown className="size-3.5 opacity-60" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>My Account</DropdownMenuLabel>
+        <DropdownMenuLabel>{email || "My Account"}</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem>
+        <DropdownMenuItem onSelect={onProfile}>
           <User className="mr-2 size-4" />
           <span>Profile</span>
         </DropdownMenuItem>
-        <DropdownMenuItem>
-          <Building className="mr-2 size-4" />
-          <span>Switch tenant</span>
-        </DropdownMenuItem>
+        {memberships.length > 0 ? (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <Building className="mr-2 size-4" />
+              <span>Switch tenant</span>
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-56">
+              {memberships.map((m) => (
+                <DropdownMenuItem
+                  key={m.tenantId}
+                  onSelect={() => onSwitchTenant(m.tenantId)}
+                >
+                  <span className="truncate">{m.tenantName}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        ) : null}
         <DropdownMenuSeparator />
-        <DropdownMenuItem>
+        <DropdownMenuItem onSelect={onSignOut}>
           <LogOut className="mr-2 size-4" />
           <span>Sign out</span>
         </DropdownMenuItem>
@@ -88,12 +135,25 @@ function UserMenu() {
 }
 
 export function AppShell() {
-  const { tenantId = "default" } = useParams()
+  const { tenantId } = useParams()
+  const { setActiveTenant } = useAuth()
+
+  // The /t/:tenantId URL is the source of truth while inside the shell.
+  // Mirror it into AuthProvider state so the user menu / future widgets
+  // that read activeTenantId stay in sync with the route.
+  useEffect(() => {
+    if (tenantId) setActiveTenant(tenantId)
+  }, [tenantId, setActiveTenant])
+
+  const safeTenantId = tenantId ?? "default"
   return (
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader className="px-3 py-3">
-          <Link to={`/t/${tenantId}/sites`} className="flex items-center gap-2 px-1">
+          <Link
+            to={`/t/${safeTenantId}/sites`}
+            className="flex items-center gap-2 px-1"
+          >
             <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-sm font-bold">
               W
             </div>

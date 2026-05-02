@@ -53,6 +53,7 @@ framer-motion, React Router 6. See plan section 0.1.
 src/
   api/                typed client (client.ts) + types (types.ts) +
                       useApiClient hook; the only place URL strings live
+  auth/               AuthProvider + RequireAuth route guard
   components/
     data-table/       shared TanStack Table wrapper
     layout/           AppShell, CommandPalette, ThemeToggle, nav-items
@@ -62,6 +63,12 @@ src/
   routes/             one file per route; thin, no business logic
   styles/globals.css  tokens for light + dark
 ```
+
+All authenticated state flows through `useAuth()` from
+`src/auth/AuthProvider.tsx`. Routes that need the session use
+`<RequireAuth>` (already applied to `/t/:tenantId/...`). The bearer token
+lives in localStorage (`wrendex.sessionToken`) and is auto-injected into
+every API call via the client's `getAuthHeader` hook.
 
 ## Adding a new route
 
