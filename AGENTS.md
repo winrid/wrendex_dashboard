@@ -77,6 +77,22 @@ every API call via the client's `getAuthHeader` hook.
 3. If the route lists data, use `DataTable` with controlled state.
 4. Server calls go through `useApiClient()` from `src/api/`.
 
+### Anonymous-claim flow (plan section 2.0)
+
+Three public routes mount above `RequireAuth` and back the marketing-hero
+free-audit funnel: `/audit` is the URL-paste landing (accepts `?url=...`
+from the marketing site and posts `startAnonymousCrawl`); `/a/:token` is
+the public teaser results page that polls `getAnonymousCrawl` every 2s,
+then renders the HealthRing + stats strip + 3 visible categories + a
+locked CTA card; `/a/:token/claiming` is the brief loading view shown
+post-signup while `AuthProvider.signupWithOptionalClaim` calls
+`claimAnonymousCrawl` and reparents the existing crawl into the user's
+new tenant. The Signup route reads `?claimToken=...&suggestedTenant=...`
+to drive that branch and routes into `/t/{tenantId}/sites/{siteId}` on
+success or `/t/{tenantId}/sites` with a toast on failure. The
+`startAnonymousCrawl` and `getAnonymousCrawl` client methods use
+`skipAuth: true` so the public bucket never sees a Bearer header.
+
 ## Adding a new shadcn component
 
 `pnpm dlx shadcn@latest add <name>`. Then edit the generated file in

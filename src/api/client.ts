@@ -9,6 +9,10 @@ import type {
   Alert,
   AlertListParams,
   AlertQueryResult,
+  AnonymousCrawlClaimResponse,
+  AnonymousCrawlFull,
+  AnonymousCrawlStartResponse,
+  AnonymousCrawlSummary,
   AuthLoginRequest,
   AuthLoginResponse,
   AuthSignupRequest,
@@ -19,6 +23,7 @@ import type {
   CreateTenantInput,
   DirectoryNode,
   DuplicatesResult,
+  EmailedSummaryResponse,
   HealthScorePoint,
   IssuesSummary,
   LinkExploreParams,
@@ -63,6 +68,24 @@ export function isApiError(e: unknown): e is ApiError {
   return e instanceof ApiError
 }
 
+/** Specialised ApiError thrown when the backend rate-limits a request
+ *  (HTTP 429). The Retry-After response header is parsed into seconds so
+ *  callers can render a "try again in N minutes" message without re-
+ *  parsing the HTTP layer. */
+export class RateLimitError extends ApiError {
+  readonly retryAfterSeconds: number
+
+  constructor(message: string, body: unknown, retryAfterSeconds: number) {
+    super(429, message, body)
+    this.name = "RateLimitError"
+    this.retryAfterSeconds = retryAfterSeconds
+  }
+}
+
+export function isRateLimitError(e: unknown): e is RateLimitError {
+  return e instanceof RateLimitError
+}
+
 // ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
@@ -100,6 +123,23 @@ function buildUrl(baseUrl: string, path: string, query?: Query): string {
   return url.toString()
 }
 
+/** Parse the HTTP Retry-After response header into seconds. Per RFC 7231
+ *  the value is either an HTTP-date or a delta-seconds integer; the BE
+ *  emits delta-seconds. Falls back to 60s if the header is missing or
+ *  malformed so the UI always has something to show. */
+function parseRetryAfter(raw: string | null): number {
+  if (!raw) return 60
+  const n = Number(raw)
+  if (Number.isFinite(n) && n >= 0) return Math.round(n)
+  // HTTP-date fallback (uncommon in practice for 429s).
+  const t = Date.parse(raw)
+  if (!Number.isNaN(t)) {
+    const diff = Math.round((t - Date.now()) / 1000)
+    return diff > 0 ? diff : 60
+  }
+  return 60
+}
+
 async function parseBody(res: Response): Promise<unknown> {
   if (res.status === 204) return undefined
   const text = await res.text()
@@ -123,12 +163,16 @@ export function createApiClient(opts: CreateApiClientOptions) {
   async function request<T>(
     method: string,
     path: string,
-    init: { query?: Query; body?: unknown } = {},
+    init: { query?: Query; body?: unknown; skipAuth?: boolean } = {},
   ): Promise<T> {
     const url = buildUrl(opts.baseUrl, path, init.query)
     const headers: Record<string, string> = { Accept: "application/json" }
     if (init.body !== undefined) headers["Content-Type"] = "application/json"
-    if (opts.getAuthHeader) {
+    // skipAuth opts a single request out of the global Authorization
+    // header. Used by the public anonymous-crawl POST + GET so the
+    // backend's auth middleware doesn't see a Bearer token while the
+    // public path is still being routed.
+    if (opts.getAuthHeader && !init.skipAuth) {
       const auth = await opts.getAuthHeader()
       if (auth) Object.assign(headers, auth)
     }
@@ -143,6 +187,10 @@ export function createApiClient(opts: CreateApiClientOptions) {
         typeof body === "string" && body.length > 0
           ? body
           : `${method} ${path} failed with ${res.status}`
+      if (res.status === 429) {
+        const retryAfter = parseRetryAfter(res.headers.get("Retry-After"))
+        throw new RateLimitError(message, body, retryAfter)
+      }
       throw new ApiError(res.status, message, body)
     }
     return body as T
@@ -424,6 +472,70 @@ export function createApiClient(opts: CreateApiClientOptions) {
     return request<Alert>("PATCH", `/api/alerts/${alertId}/unignore`)
   }
 
+  // -------------------------------------------------------------------------
+  // Anonymous crawls - AnonymousCrawlController (plan section 2.0)
+  // -------------------------------------------------------------------------
+  //
+  // The POST + GET teaser endpoints do NOT require a bearer token. We pass
+  // skipAuth=true so the global getAuthHeader hook is not consulted; this
+  // avoids leaking the user's session token to the public bucket and keeps
+  // the backend's auth middleware happy when both a public POST and an
+  // authenticated /claim are routed through the same shared base path.
+
+  function startAnonymousCrawl(input: {
+    url: string
+  }): Promise<AnonymousCrawlStartResponse> {
+    return request<AnonymousCrawlStartResponse>(
+      "POST",
+      "/api/anonymous-crawls",
+      { body: input, skipAuth: true },
+    )
+  }
+
+  function getAnonymousCrawl(token: string): Promise<AnonymousCrawlSummary> {
+    return request<AnonymousCrawlSummary>(
+      "GET",
+      `/api/anonymous-crawls/${encodeURIComponent(token)}`,
+      { skipAuth: true },
+    )
+  }
+
+  function claimAnonymousCrawl(
+    token: string,
+    tenantId: string,
+  ): Promise<AnonymousCrawlClaimResponse> {
+    return request<AnonymousCrawlClaimResponse>(
+      "POST",
+      `/api/anonymous-crawls/${encodeURIComponent(token)}/claim`,
+      { body: { tenantId } },
+    )
+  }
+
+  function getAnonymousCrawlFull(token: string): Promise<AnonymousCrawlFull> {
+    return request<AnonymousCrawlFull>(
+      "GET",
+      `/api/anonymous-crawls/${encodeURIComponent(token)}/full`,
+    )
+  }
+
+  /**
+   * STUB. The "Email me the summary" CTA on the teaser page. There is no
+   * backend endpoint yet (the BE email worker doesn't expose this surface);
+   * this method resolves after a short delay so the dialog can show a loading
+   * state before flipping to the toast. Replace the body with a real
+   * `request(...)` call once the BE wires the endpoint. This is the only
+   * allowed exception to the "no raw fetch" rule because there is no fetch -
+   * it's a Promise.resolve wrapped in a setTimeout.
+   */
+  function requestEmailedSummary(
+    _token: string,
+    _email: string,
+  ): Promise<EmailedSummaryResponse> {
+    return new Promise((resolve) => {
+      window.setTimeout(() => resolve({ queued: true }), 250)
+    })
+  }
+
   return {
     // auth
     signup,
@@ -470,6 +582,12 @@ export function createApiClient(opts: CreateApiClientOptions) {
     getPageByUrl,
     ignoreAlert,
     unignoreAlert,
+    // anonymous crawls
+    startAnonymousCrawl,
+    getAnonymousCrawl,
+    claimAnonymousCrawl,
+    getAnonymousCrawlFull,
+    requestEmailedSummary,
   } as const
 }
 

@@ -19,6 +19,9 @@ import { Signup } from "@/routes/Signup"
 import { ForgotPassword } from "@/routes/ForgotPassword"
 import { ResetPassword } from "@/routes/ResetPassword"
 import { RootRedirect } from "@/routes/RootRedirect"
+import { Audit } from "@/routes/Audit"
+import { AnonymousCrawlTeaser } from "@/routes/AnonymousCrawlTeaser"
+import { AnonymousCrawlClaiming } from "@/routes/AnonymousCrawlClaiming"
 
 // Public routes mount above RequireAuth so unauthenticated users can reach
 // them without being bounced to /login. Everything else lives inside the
@@ -29,6 +32,13 @@ export const router = createBrowserRouter([
   { path: "/signup", element: <Signup /> },
   { path: "/forgot-password", element: <ForgotPassword /> },
   { path: "/reset-password", element: <ResetPassword /> },
+  // Anonymous-crawl funnel (plan section 2.0 + 1.1 PATH A). Public; the
+  // /audit landing accepts ?url=... and posts startAnonymousCrawl. The
+  // teaser lives at /a/:token; /a/:token/claiming is the brief loading
+  // view shown after Signup auto-claims into the new tenant.
+  { path: "/audit", element: <Audit /> },
+  { path: "/a/:token", element: <AnonymousCrawlTeaser /> },
+  { path: "/a/:token/claiming", element: <AnonymousCrawlClaiming /> },
   {
     path: "/",
     element: (

@@ -621,6 +621,67 @@ export type SiteVerificationConfirmation = {
   lastCheckedAt: string
 }
 
+// ---------------------------------------------------------------------------
+// Anonymous crawls (plan section 2.0). Public teaser bucket that backs the
+// marketing-hero free-audit funnel. The wire shapes mirror
+// AnonymousCrawlController on the backend (commit 5bb1a2b). Everything is
+// strings on the wire (ObjectIds are hex-encoded; Instants are ISO 8601).
+// ---------------------------------------------------------------------------
+
+/** Response for POST /api/anonymous-crawls. The crawl is queued; the FE
+ *  navigates to the teaser route and polls until the run completes. */
+export type AnonymousCrawlStartResponse = {
+  token: string
+  crawlRunId: string
+  status: string
+}
+
+/** Response for GET /api/anonymous-crawls/{token}. issuesSummary.byCategory
+ *  is capped at 3 entries on the wire so we never leak the full report
+ *  before the user signs up + claims. */
+export type AnonymousCrawlSummary = {
+  token: string
+  url: string
+  status: string
+  crawlRunId: string | null
+  healthScore: number | null
+  pagesCrawled: number
+  pagesDiscovered: number
+  issuesSummary: IssuesSummary
+  isClaimed: boolean
+  claimedByTenantId: string | null
+  expiresAt: string | null
+}
+
+/** Response for POST /api/anonymous-crawls/{token}/claim. */
+export type AnonymousCrawlClaimResponse = {
+  siteId: string
+  crawlRunId: string
+  claimedAt: string
+}
+
+/** Response for GET /api/anonymous-crawls/{token}/full. Owner-only;
+ *  uncapped issuesSummary and the alerts list. */
+export type AnonymousCrawlFull = {
+  token: string
+  url: string
+  status: string
+  crawlRunId: string | null
+  siteId: string | null
+  issuesSummary: IssuesSummary
+  alerts: Alert[]
+  isClaimed: boolean
+  claimedByTenantId: string
+  claimedAt: string | null
+}
+
+/** Stub response for the email-summary CTA. The BE method is not wired
+ *  yet (see client.ts requestEmailedSummary); this shape pins what the
+ *  eventual endpoint will return. */
+export type EmailedSummaryResponse = {
+  queued: boolean
+}
+
 export type CreateSiteInput = {
   url: string
   maxPages?: number | null

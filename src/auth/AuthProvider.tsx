@@ -22,6 +22,7 @@ import {
 import { ApiError } from "@/api/client"
 import { setAuthToken, useApiClient } from "@/api/useApiClient"
 import type {
+  AnonymousCrawlClaimResponse,
   AuthLoginRequest,
   AuthSignupRequest,
   Me,
@@ -50,6 +51,20 @@ function writeStoredToken(token: string | null): void {
   }
 }
 
+/** Result of signupWithOptionalClaim: either a vanilla signup or a signup
+ *  followed by a successful anonymous-crawl claim. The claim error is
+ *  surfaced separately so the caller can route the user into their tenant
+ *  even if the claim itself failed. */
+export type SignupWithClaimResult = {
+  tenantId: string
+  /** Present when claimToken was passed AND the claim mutation succeeded. */
+  claim?: AnonymousCrawlClaimResponse
+  /** Present when claimToken was passed AND the claim mutation failed.
+   *  The auth session is still valid; the caller can route into the tenant
+   *  and surface the message to the user. */
+  claimError?: { status: number; message: string }
+}
+
 export type AuthContextValue = {
   user: User | null
   memberships: Membership[]
@@ -57,6 +72,13 @@ export type AuthContextValue = {
   isLoading: boolean
   isAuthed: boolean
   signup: (input: AuthSignupRequest) => Promise<void>
+  /** Same as signup() but optionally also claims an anonymous crawl into
+   *  the freshly-created tenant. Returns the tenantId so the caller can
+   *  navigate without re-reading state. */
+  signupWithOptionalClaim: (
+    input: AuthSignupRequest,
+    claimToken?: string,
+  ) => Promise<SignupWithClaimResult>
   login: (input: AuthLoginRequest) => Promise<void>
   logout: () => void
   setActiveTenant: (tenantId: string) => void
@@ -142,6 +164,44 @@ export function AuthProvider({ children, skipBootstrap = false }: AuthProviderPr
     [applyMe, client],
   )
 
+  const signupWithOptionalClaim = useCallback(
+    async (
+      input: AuthSignupRequest,
+      claimToken?: string,
+    ): Promise<SignupWithClaimResult> => {
+      const res = await client.signup(input)
+      writeStoredToken(res.sessionToken)
+      const me = await client.getMe()
+      applyMe(me)
+      const tenantId = res.tenant.id
+
+      if (!claimToken) {
+        return { tenantId }
+      }
+
+      // Auth is already wired (client.signup pushed the bearer token into
+      // the in-memory slot); claimAnonymousCrawl will send it. We treat any
+      // failure as soft - the user is signed in and the tenant exists; the
+      // caller can route them into their workspace and toast the error.
+      try {
+        const claim = await client.claimAnonymousCrawl(claimToken, tenantId)
+        return { tenantId, claim }
+      } catch (e) {
+        const apiErr = e instanceof ApiError ? e : null
+        return {
+          tenantId,
+          claimError: {
+            status: apiErr?.status ?? 0,
+            message:
+              apiErr?.message ??
+              (e instanceof Error ? e.message : "Could not claim audit"),
+          },
+        }
+      }
+    },
+    [applyMe, client],
+  )
+
   const login = useCallback(
     async (input: AuthLoginRequest) => {
       const res = await client.login(input)
@@ -172,11 +232,22 @@ export function AuthProvider({ children, skipBootstrap = false }: AuthProviderPr
       isLoading,
       isAuthed: user !== null,
       signup,
+      signupWithOptionalClaim,
       login,
       logout,
       setActiveTenant,
     }),
-    [user, memberships, activeTenantId, isLoading, signup, login, logout, setActiveTenant],
+    [
+      user,
+      memberships,
+      activeTenantId,
+      isLoading,
+      signup,
+      signupWithOptionalClaim,
+      login,
+      logout,
+      setActiveTenant,
+    ],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
