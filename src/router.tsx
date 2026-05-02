@@ -5,7 +5,8 @@ import { Sites } from "@/routes/Sites"
 import { SiteDetail } from "@/routes/SiteDetail"
 import { CrawlHistory } from "@/routes/CrawlHistory"
 import { CrawlDetailComingSoon } from "@/routes/CrawlDetailComingSoon"
-import { CategoryComingSoon } from "@/routes/CategoryComingSoon"
+import { IssueCategoryDetail } from "@/routes/IssueCategoryDetail"
+import { IssueTypeDetail } from "@/routes/IssueTypeDetail"
 import { SiteInbox } from "@/routes/SiteInbox"
 import { Inbox } from "@/routes/Inbox"
 import { Reports } from "@/routes/Reports"
@@ -65,7 +66,11 @@ export const router = createBrowserRouter([
       },
       {
         path: "crawls/:crawlId/issues/category/:categoryId",
-        element: <CategoryComingSoon />,
+        element: <IssueCategoryDetail />,
+      },
+      {
+        path: "crawls/:crawlId/issues/type/:alertType",
+        element: <IssueTypeDetail />,
       },
       { path: "sites/:siteId/inbox", element: <SiteInbox /> },
       { path: "inbox", element: <Inbox /> },

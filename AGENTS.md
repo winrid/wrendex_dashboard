@@ -55,6 +55,7 @@ src/
                       useApiClient hook; the only place URL strings live
   auth/               AuthProvider + RequireAuth route guard
   components/
+    alerts-table/     shared AlertsTable + AlertDetailDrawer
     data-table/       shared TanStack Table wrapper
     layout/           AppShell, CommandPalette, ThemeToggle, nav-items
     ui/               shadcn primitives (copied in, edit in place)
@@ -63,6 +64,15 @@ src/
   routes/             one file per route; thin, no business logic
   styles/globals.css  tokens for light + dark
 ```
+
+`src/api/checkCatalog.ts` is the single source of truth for human-readable
+check copy: title, description, how-to-fix, default severity, category, and
+the marketing-site dotted ID. The inbox detail drawer, the per-category
+drill-in, the per-AlertType drill-in, and (eventually) email and Slack
+notification templates all read from it. Categories mirror
+`IssuesSummaryBuilder.categoryOf` on the backend verbatim. When a new
+`AlertType` lands in `src/api/types.ts`, add a matching catalog entry in the
+same PR; the `checkCatalog` integrity test fails until you do.
 
 All authenticated state flows through `useAuth()` from
 `src/auth/AuthProvider.tsx`. Routes that need the session use
