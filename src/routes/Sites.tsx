@@ -3,16 +3,19 @@ import type { ColumnDef } from "@tanstack/react-table"
 import { DataTable } from "@/components/data-table/DataTable"
 import { StubPage } from "./StubPage"
 import { Badge } from "@/components/ui/badge-fallback"
+import type { Site } from "@/api/types"
 
-type Site = {
-  id: string
+// Display row pulls a few derived fields the wire model doesn't carry yet
+// (display name, last-crawl timestamp formatting, healthScore from the latest
+// CrawlRun). Keep `Site` bound to the API contract; layer the UI extras as
+// a row type until the real wiring lands in a later iteration.
+type SiteRow = Pick<Site, "id" | "url"> & {
   name: string
-  url: string
   lastCrawl: string
   healthScore: number
 }
 
-const MOCK_SITES: Site[] = [
+const MOCK_SITES: SiteRow[] = [
   {
     id: "s_1",
     name: "Acme Corp",
@@ -59,7 +62,7 @@ function scoreColor(score: number) {
 export function Sites() {
   const navigate = useNavigate()
   const { tenantId = "default" } = useParams()
-  const columns: ColumnDef<Site>[] = [
+  const columns: ColumnDef<SiteRow>[] = [
     {
       accessorKey: "name",
       header: "Name",

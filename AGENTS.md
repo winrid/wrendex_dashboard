@@ -13,11 +13,13 @@ framer-motion, React Router 6. See plan section 0.1.
 
 ## Hard rules (no exceptions)
 
-1. **Type-safe generated API clients only.** No raw `fetch`, no `axios`,
-   no hand-written URL strings pointing at `/api/...`. Every backend
-   call goes through the generated client at `src/api/generated/`.
-   Reviewer agents reject PRs that bypass it. If the generated client
-   is missing an endpoint, regenerate it; do NOT escape-hatch around it.
+1. **Type-safe API client only.** No raw `fetch`, no `axios`, no hand-
+   written URL strings pointing at `/api/...`. Every backend call goes
+   through the typed client. Methods live in `src/api/client.ts`, types
+   in `src/api/types.ts`; nothing outside `src/api/` may construct a URL
+   string for the backend. Reviewer agents reject PRs that bypass it.
+   If an endpoint is missing, add the method + types in `src/api/`;
+   do NOT escape-hatch around it.
 
 2. **Tenant-scoped routes only.** All authenticated routes nest under
    `/t/:tenantId/...`. New routes that don't follow this pattern are
@@ -49,7 +51,8 @@ framer-motion, React Router 6. See plan section 0.1.
 
 ```
 src/
-  api/generated/      generated typed client + types (committed)
+  api/                typed client (client.ts) + types (types.ts) +
+                      useApiClient hook; the only place URL strings live
   components/
     data-table/       shared TanStack Table wrapper
     layout/           AppShell, CommandPalette, ThemeToggle, nav-items
@@ -65,7 +68,7 @@ src/
 1. Add the route to `src/router.tsx` under `/t/:tenantId/...`.
 2. Read `tenantId` and any other params with `useParams`.
 3. If the route lists data, use `DataTable` with controlled state.
-4. Server calls go through `src/api/generated/`.
+4. Server calls go through `useApiClient()` from `src/api/`.
 
 ## Adding a new shadcn component
 
