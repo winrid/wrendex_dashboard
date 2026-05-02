@@ -4,11 +4,6 @@
 // Renders the per-site health score timeseries as a ComposedChart (line for
 // healthScore on the left axis, stacked bars for errors / warnings / notices
 // on the right axis) plus a DataTable below it with one row per crawl run.
-// Deploy annotations (Phase 2 release-annotations endpoint) are overlaid as
-// vertical pins on the chart and surface a sha + env + first 80 chars of
-// the commit message on hover. The annotations endpoint is shipping in
-// parallel - if listReleaseAnnotations 404s or 5xxs the page still renders
-// the chart + table without annotations.
 
 import { useMemo, useState } from "react"
 import { Link, useParams } from "react-router-dom"
@@ -20,7 +15,6 @@ import {
   CartesianGrid,
   ComposedChart,
   Line,
-  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -30,10 +24,8 @@ import { format } from "date-fns"
 import { useApiClient } from "@/api/useApiClient"
 import type {
   HealthScorePoint,
-  ReleaseAnnotation,
   Site,
 } from "@/api/types"
-import { Badge } from "@/components/ui/badge-fallback"
 import { Button } from "@/components/ui/button"
 import { DataTable } from "@/components/data-table/DataTable"
 import { cn } from "@/lib/utils"
@@ -75,16 +67,13 @@ function filterByRange(
 function ChartTooltip({
   active,
   payload,
-  annotationsByCrawlId,
 }: {
   active?: boolean
   payload?: Array<{ payload?: ChartRow }>
-  annotationsByCrawlId: Map<string, ReleaseAnnotation>
 }) {
   if (!active || !payload || payload.length === 0) return null
   const row = payload[0]?.payload
   if (!row) return null
-  const annotation = annotationsByCrawlId.get(row.crawlRunId)
   return (
     <div className="rounded-md border bg-popover p-2 text-xs text-popover-foreground shadow-md">
       <div className="font-medium">
@@ -100,20 +89,6 @@ function ChartTooltip({
         <span className="text-blue-500">Notices</span>
         <span className="text-right">{row.notices}</span>
       </div>
-      {annotation ? (
-        <div className="mt-2 border-t pt-2">
-          <div className="font-medium text-foreground">
-            Deploy: {annotation.sha.slice(0, 7)}
-            <span className="ml-1 text-muted-foreground">({annotation.env})</span>
-          </div>
-          {annotation.message ? (
-            <div className="mt-0.5 max-w-[18rem] text-muted-foreground">
-              {annotation.message.slice(0, 80)}
-              {annotation.message.length > 80 ? "..." : ""}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
     </div>
   )
 }
@@ -136,26 +111,6 @@ export function HealthHistory() {
     queryKey: ["site-health", siteId],
     queryFn: () => client.getHealthScore(siteId),
     enabled: Boolean(siteId),
-  })
-
-  // Release annotations are best-effort. The BE endpoint is shipping in
-  // parallel; we catch the 404 / 5xx and fall back to an empty list so the
-  // chart still renders without pins.
-  const annotationsQ = useQuery<ReleaseAnnotation[]>({
-    queryKey: ["site-release-annotations", siteId],
-    queryFn: async () => {
-      try {
-        return await client.listReleaseAnnotations(siteId)
-      } catch (err) {
-        // Soft-fail. Console-warn so it's visible in dev but never blocks
-        // the page render.
-        // eslint-disable-next-line no-console
-        console.warn("listReleaseAnnotations failed; rendering without pins", err)
-        return []
-      }
-    },
-    enabled: Boolean(siteId),
-    retry: false,
   })
 
   const sortedPoints = useMemo<HealthScorePoint[]>(() => {
@@ -196,29 +151,6 @@ export function HealthHistory() {
     })
     return rows.reverse()
   }, [filteredPoints])
-
-  // Build a quick lookup for the tooltip / pin rendering. Anchor each
-  // annotation to its overlapping crawl so we can drop a vertical line at
-  // that exact x-coordinate (no awkward midpoint guessing).
-  const annotationsByCrawlId = useMemo(() => {
-    const m = new Map<string, ReleaseAnnotation>()
-    for (const a of annotationsQ.data ?? []) {
-      m.set(a.crawlRunId, a)
-    }
-    return m
-  }, [annotationsQ.data])
-
-  // Pins to render. We only show pins whose crawl is in the visible range
-  // (annotations outside the window would have no x-anchor on the chart).
-  const visiblePins = useMemo<Array<ReleaseAnnotation & { ts: number }>>(() => {
-    const visibleIds = new Set(chartData.map((c) => c.crawlRunId))
-    const pins: Array<ReleaseAnnotation & { ts: number }> = []
-    for (const a of annotationsQ.data ?? []) {
-      if (!visibleIds.has(a.crawlRunId)) continue
-      pins.push({ ...a, ts: new Date(a.startedAt).getTime() })
-    }
-    return pins
-  }, [annotationsQ.data, chartData])
 
   const columns = useMemo<ColumnDef<TableRow>[]>(
     () => [
@@ -424,13 +356,7 @@ export function HealthHistory() {
                   stroke="currentColor"
                   className="text-muted-foreground"
                 />
-                <Tooltip
-                  content={
-                    <ChartTooltip
-                      annotationsByCrawlId={annotationsByCrawlId}
-                    />
-                  }
-                />
+                <Tooltip content={<ChartTooltip />} />
                 <Bar
                   yAxisId="counts"
                   dataKey="errors"
@@ -464,44 +390,10 @@ export function HealthHistory() {
                   dot={{ r: 2 }}
                   strokeWidth={2}
                 />
-                {visiblePins.map((pin) => (
-                  <ReferenceLine
-                    key={`pin-${pin.crawlRunId}`}
-                    yAxisId="score"
-                    x={pin.ts}
-                    stroke="currentColor"
-                    className="stroke-violet-500"
-                    strokeDasharray="2 2"
-                    ifOverflow="extendDomain"
-                    label={{
-                      value: pin.sha.slice(0, 7),
-                      position: "top",
-                      fill: "currentColor",
-                      fontSize: 10,
-                    }}
-                  />
-                ))}
               </ComposedChart>
             </ResponsiveContainer>
           )}
         </div>
-        {visiblePins.length > 0 ? (
-          <div
-            className="mt-3 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
-            data-testid="health-history-annotations"
-          >
-            <span>Deploys:</span>
-            {visiblePins.map((pin) => (
-              <Badge
-                key={`badge-${pin.crawlRunId}`}
-                variant="outline"
-                title={`${pin.sha} (${pin.env}) - ${pin.message.slice(0, 80)}`}
-              >
-                {pin.sha.slice(0, 7)} - {pin.env}
-              </Badge>
-            ))}
-          </div>
-        ) : null}
       </div>
 
       {/* Table */}

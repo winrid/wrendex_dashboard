@@ -2,16 +2,14 @@
 // the useApiClient boundary. Asserts:
 //   1. The chart container + per-crawl DataTable both render when
 //      getHealthScore returns data.
-//   2. Deploy annotations show up when listReleaseAnnotations returns data
-//      (we look for the visible pin badge with the short sha).
-//   3. listReleaseAnnotations rejecting (404 / 5xx) does NOT break the
-//      page - the chart + table still render.
+//   2. The page still renders cleanly when only a single crawl point is
+//      returned by the health-score endpoint.
 
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import type { HealthScorePoint, ReleaseAnnotation, Site } from "@/api/types"
+import type { HealthScorePoint, Site } from "@/api/types"
 
 // Recharts uses ResponsiveContainer which measures the parent box; jsdom
 // reports zero. We mock ResponsiveContainer to a fixed-size wrapper so the
@@ -61,13 +59,11 @@ beforeAll(() => {
 })
 
 const getHealthScore = vi.fn()
-const listReleaseAnnotations = vi.fn()
 const getSite = vi.fn()
 
 vi.mock("@/api/useApiClient", () => ({
   useApiClient: () => ({
     getHealthScore,
-    listReleaseAnnotations,
     getSite,
   }),
 }))
@@ -129,7 +125,6 @@ describe("HealthHistory", () => {
   afterEach(() => {
     cleanup()
     getHealthScore.mockReset()
-    listReleaseAnnotations.mockReset()
     getSite.mockReset()
   })
 
@@ -144,7 +139,6 @@ describe("HealthHistory", () => {
       makePoint("c_1", t1, 88, 5, 10, 20),
       makePoint("c_2", t2, 92, 2, 8, 18),
     ])
-    listReleaseAnnotations.mockResolvedValue([])
 
     renderRoute()
 
@@ -170,39 +164,11 @@ describe("HealthHistory", () => {
     expect(screen.getAllByText("View").length).toBe(2)
   })
 
-  it("renders deploy annotations when listReleaseAnnotations returns data", async () => {
+  it("renders chart + table for a single crawl point", async () => {
     const now = Date.now()
     const t1 = new Date(now - 5 * 24 * 60 * 60 * 1000).toISOString()
     getSite.mockResolvedValue(makeSite())
     getHealthScore.mockResolvedValue([makePoint("c_1", t1, 90, 1, 2, 3)])
-    const annotation: ReleaseAnnotation = {
-      crawlRunId: "c_1",
-      sha: "abc1234deadbeef",
-      env: "production",
-      ref: "main",
-      message: "Ship the new pricing card on the marketing site",
-      startedAt: t1,
-      healthScore: 90,
-    }
-    listReleaseAnnotations.mockResolvedValue([annotation])
-
-    renderRoute()
-
-    // The legend row only renders when at least one pin is in range; look
-    // for it by data-testid so we don't depend on text in the chart SVG.
-    await waitFor(() => {
-      expect(screen.getByTestId("health-history-annotations")).toBeTruthy()
-    })
-    // The pin badge surfaces the short sha + env.
-    expect(screen.getByText(/abc1234.*production/)).toBeTruthy()
-  })
-
-  it("renders without annotations when listReleaseAnnotations rejects", async () => {
-    const now = Date.now()
-    const t1 = new Date(now - 5 * 24 * 60 * 60 * 1000).toISOString()
-    getSite.mockResolvedValue(makeSite())
-    getHealthScore.mockResolvedValue([makePoint("c_1", t1, 90, 1, 2, 3)])
-    listReleaseAnnotations.mockRejectedValue(new Error("404 Not Found"))
 
     renderRoute()
 
@@ -214,7 +180,5 @@ describe("HealthHistory", () => {
     await waitFor(() => {
       expect(screen.getByText("90")).toBeTruthy()
     })
-    // No annotations row.
-    expect(screen.queryByTestId("health-history-annotations")).toBeNull()
   })
 })
