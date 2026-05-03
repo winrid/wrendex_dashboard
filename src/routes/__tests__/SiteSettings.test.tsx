@@ -308,6 +308,28 @@ describe("SiteSettings - custom rule composer", () => {
     expect(args[1].params.name).toBe("My rule")
   })
 
+  it("omits DIGEST_PERIOD from the composer trigger options and surfaces the deferral note", async () => {
+    renderRoute()
+
+    // Open the composer dialog.
+    await screen.findByTestId("alert-rule-switch-NEW_ERROR")
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("open-custom-rule-composer"))
+    })
+
+    // The composer mounts on Step 1 (Trigger). The Phase 4 deferral note
+    // sits inline on Step 1 explaining where DIGEST_PERIOD went.
+    const note = await screen.findByTestId("digest-period-note")
+    expect(note.textContent ?? "").toMatch(/Cron-style digest scheduling/i)
+    expect(note.textContent ?? "").toMatch(/Weekly digest/i)
+
+    // The trigger-kind Select still sits on the page but DIGEST_PERIOD is
+    // no longer one of its options; the click-to-expand affordance for the
+    // shadcn Select isn't trivial in jsdom, so we instead assert the
+    // marketing copy for the dropped option is nowhere on the screen.
+    expect(screen.queryByText(/On a recurring schedule/i)).toBeNull()
+  })
+
   it("renders the Delete button only on CUSTOM rules and confirms deletion", async () => {
     listAlertRules.mockResolvedValue([
       {

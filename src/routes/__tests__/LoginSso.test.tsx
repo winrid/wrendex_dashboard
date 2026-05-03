@@ -3,6 +3,9 @@
 //   2. Submitting the prompt with a tenant id navigates the browser to
 //      the SP-initiated login endpoint with returnTo set to the current
 //      origin.
+//   3. When the URL carries ?error=saml-not-implemented (Phase 4 deferral)
+//      the page surfaces the inline banner and strips the param via
+//      history.replaceState so a refresh doesn't re-toast.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
@@ -126,5 +129,63 @@ describe("Login SSO button", () => {
       expect(screen.getByTestId("sso-error")).toBeTruthy()
     })
     expect(assignedHref).toBeNull()
+  })
+
+  it("surfaces the saml-not-implemented banner and strips the error param when present", async () => {
+    // Override the location so href reflects the BE-bounced query param.
+    let currentHref = "http://localhost:5173/login?error=saml-not-implemented"
+    let currentSearch = "?error=saml-not-implemented"
+    let currentPathname = "/login"
+    let replaceCalled = false
+    Object.defineProperty(window, "location", {
+      writable: true,
+      value: {
+        ...originalLocation,
+        origin: "http://localhost:5173",
+        get pathname() {
+          return currentPathname
+        },
+        get search() {
+          return currentSearch
+        },
+        hash: "",
+        get href() {
+          return assignedHref ?? currentHref
+        },
+        set href(v: string) {
+          assignedHref = v
+        },
+      } as unknown as Location,
+    })
+    const originalReplaceState = window.history.replaceState.bind(
+      window.history,
+    )
+    window.history.replaceState = ((
+      data: unknown,
+      _unused: string,
+      url?: string | URL | null,
+    ) => {
+      replaceCalled = true
+      if (typeof url === "string") {
+        // Update our shimmed location so subsequent reads see the cleaned URL.
+        currentHref = `http://localhost:5173${url}`
+        const q = url.includes("?") ? url.slice(url.indexOf("?")) : ""
+        currentSearch = q
+        currentPathname = url.split("?")[0] ?? "/login"
+      }
+      return originalReplaceState(data as never, _unused, url ?? null)
+    }) as typeof window.history.replaceState
+
+    try {
+      renderLogin()
+
+      const banner = await screen.findByTestId("sso-not-implemented-banner")
+      expect(banner.textContent ?? "").toMatch(/SSO sign-in is not yet/i)
+      expect(replaceCalled).toBe(true)
+      // The cleaned URL should no longer contain the error param.
+      expect(currentSearch.includes("error=saml-not-implemented")).toBe(false)
+    } finally {
+      window.history.replaceState = originalReplaceState
+    }
   })
 })

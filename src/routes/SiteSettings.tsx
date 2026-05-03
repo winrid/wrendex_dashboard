@@ -568,8 +568,14 @@ function AlertRuleRow({
 // enabled: true, params}).
 // ---------------------------------------------------------------------------
 
+// DIGEST_PERIOD is intentionally omitted from the user-selectable trigger
+// kinds: cron-style digest scheduling lands in Phase 5+ once the BE has a
+// proper cron evaluator. Until then, the canned WEEKLY_DIGEST rule covers
+// the only digest cadence the BE actually fires. See AGENTS.md "Phase 4
+// deferrals". The `AlertRuleTrigger` union still carries DIGEST_PERIOD so
+// any rules already persisted with that kind continue to render.
 const TRIGGER_KIND_OPTIONS: {
-  value: AlertRuleTrigger["kind"]
+  value: Exclude<AlertRuleTrigger["kind"], "DIGEST_PERIOD">
   label: string
   description: string
 }[] = [
@@ -590,11 +596,6 @@ const TRIGGER_KIND_OPTIONS: {
     label: "When the alert count crosses a threshold",
     description:
       "Fire when the total matching-alert count crosses a configured value.",
-  },
-  {
-    value: "DIGEST_PERIOD",
-    label: "On a recurring schedule (digest)",
-    description: "Send a periodic summary regardless of new alerts.",
   },
 ]
 
@@ -966,32 +967,13 @@ function TriggerStep({
         </div>
       ) : null}
 
-      {trigger.kind === "DIGEST_PERIOD" ? (
-        <div className="space-y-1">
-          <Label>Cadence</Label>
-          <Select
-            value={trigger.cron}
-            onValueChange={(v) =>
-              onChange({
-                kind: "DIGEST_PERIOD",
-                cron: v as "DAILY" | "WEEKLY" | "MONTHLY",
-              })
-            }
-          >
-            <SelectTrigger
-              className="w-40"
-              data-testid="trigger-digest-cron"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="DAILY">Daily</SelectItem>
-              <SelectItem value="WEEKLY">Weekly</SelectItem>
-              <SelectItem value="MONTHLY">Monthly</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      ) : null}
+      <p
+        className="rounded-md border border-muted-foreground/20 bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+        data-testid="digest-period-note"
+      >
+        Cron-style digest scheduling lands in Phase 5+; use the canned Weekly
+        digest rule for now.
+      </p>
     </div>
   )
 }

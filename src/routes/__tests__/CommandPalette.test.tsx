@@ -114,6 +114,70 @@ describe("CommandPalette - search wiring", () => {
     })
   })
 
+  it("forwards the URL :siteId as activeSiteId and renders the truncated footer when set", async () => {
+    search.mockResolvedValue({
+      items: [
+        {
+          kind: "site",
+          id: "s_1",
+          title: "acme.example",
+          snippet: "https://acme.example",
+          route: "/t/t_1/sites/s_1",
+        },
+      ],
+      truncated: true,
+    })
+
+    const qc = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={["/t/t_1/sites/s_99/pages"]}>
+          <Routes>
+            <Route
+              path="/t/:tenantId/sites/:siteId/*"
+              element={
+                <>
+                  <CommandPalette />
+                  <div data-testid="route-content">PAGES</div>
+                </>
+              }
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    )
+    openPalette()
+
+    const input = await screen.findByPlaceholderText(
+      /Search sites, pages, alerts, checks/i,
+    )
+    fireEvent.change(input, { target: { value: "acme" } })
+
+    await waitFor(() => {
+      expect(search).toHaveBeenCalled()
+    })
+    const call = search.mock.calls[search.mock.calls.length - 1]
+    expect(call[0]).toEqual({
+      q: "acme",
+      tenantId: "t_1",
+      limit: 20,
+      activeSiteId: "s_99",
+    })
+
+    // The truncated footer renders inside the palette.
+    const footer = await screen.findByTestId(
+      "cmdk-truncated-footer",
+      {},
+      { timeout: 2000 },
+    )
+    expect(footer.textContent ?? "").toMatch(/most recently crawled sites/i)
+  })
+
   it("navigates to the clicked result's route and closes the palette", async () => {
     search.mockResolvedValue([
       {

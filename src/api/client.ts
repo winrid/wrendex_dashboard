@@ -78,7 +78,6 @@ import type {
   SavedView,
   SearchParams,
   SearchResponse,
-  SearchResult,
   Setup2faResponse,
   SetupIntent,
   ShareLink,
@@ -1508,21 +1507,24 @@ export function createApiClient(opts: CreateApiClientOptions) {
 
   // -------------------------------------------------------------------------
   // Global search (P4 iter 3 BE-C). Backed by GET /api/search?q=&tenantId=&
-  // limit=20. AUTH. Drives the cmd-K palette in the AppShell. The BE returns
-  // {items: SearchResult[]}; the typed client unwraps to the array so the
-  // calling code does not have to reach into .items. limit defaults to 20
-  // (matches the BE cap) when the caller omits it.
+  // limit=20[&activeSiteId=]. AUTH. Drives the cmd-K palette in the AppShell.
+  // The BE returns {items: SearchResult[], truncated?: boolean}; the typed
+  // client returns the full response so callers can render a "results were
+  // capped" hint when truncated is true. limit defaults to 20 (matches the
+  // BE cap) when the caller omits it. activeSiteId is forwarded when present
+  // so the BE prefers the active site inside the per-tenant Sites cap.
   // -------------------------------------------------------------------------
 
-  async function search(params: SearchParams): Promise<SearchResult[]> {
+  async function search(params: SearchParams): Promise<SearchResponse> {
     const res = await request<SearchResponse>("GET", "/api/search", {
       query: {
         q: params.q,
         tenantId: params.tenantId,
         limit: params.limit ?? 20,
+        ...(params.activeSiteId ? { activeSiteId: params.activeSiteId } : {}),
       },
     })
-    return res?.items ?? []
+    return res ?? { items: [] }
   }
 
   return {

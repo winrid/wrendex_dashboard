@@ -510,3 +510,35 @@ opens the form.
      `{hasClaimToken, hasCardCaptured}`.
   5. `trial_active` - first /t/:tenantId/billing visit while
      `subscriptionStatus === "TRIALING"`, props `{tenantId, plan}`.
+
+## Phase 4 deferrals
+
+Three Phase 4 surfaces ship with intentional gaps. The FE shells exist (so
+the marketing + sales motion can demo them) but the protocol / infra work
+that would make them fully usable lands in Phase 5+. Treat the items below
+as known-half-shipped; do not add escape-hatch UX without coordinating with
+the BE.
+
+- **SAML SSO protocol routes are 501 stubs.** The Settings -> Tenant ->
+  SAML SSO card persists the IdP fields and the Login -> "Sign in with SSO"
+  button hard-navigates to `/api/saml/sp/{tenantId}/login`, but the BE
+  /login + /acs handlers currently 501. The SSO button therefore dead-ends
+  for end users; the BE bounces the browser back to `/login?error=saml-not-implemented`,
+  and `Login.tsx` surfaces a toast + inline banner on mount and strips the
+  query param. Real SAML protocol handling (request signing, IdP redirect,
+  SAMLResponse verification) lands in Phase 5+ on top of a hardened library.
+- **Custom subdomain UI configures CNAME pointers only.** The Settings ->
+  Tenant -> Custom subdomain card stores the customer's chosen subdomain
+  and verifies the CNAME points at wrendex.com via
+  `verifySubdomain(tenantId)`. TLS certificate provisioning + reverse-proxy
+  routing for the configured subdomain is Phase 5+ infra work; until then
+  visitors must reach the dashboard via `app.wrendex.com`. The verification
+  pill therefore reflects DNS health only, not end-to-end reachability.
+- **DIGEST_PERIOD CUSTOM trigger is intentionally unselectable.** The
+  custom-rule composer (SiteSettings -> Alert rules -> + Custom rule -> Step
+  1) omits the DIGEST_PERIOD option from its Trigger Select; cron-style
+  digest scheduling needs a proper cron evaluator on the BE which lands in
+  Phase 5+. The canned WEEKLY_DIGEST rule covers the only digest cadence
+  the BE actually fires today. The `AlertRuleTrigger` union still carries
+  DIGEST_PERIOD so any rules already persisted with that kind continue to
+  render; we just block new ones via the composer.

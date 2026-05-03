@@ -28,7 +28,7 @@
 // existing tenant when accept fails so they don't get stranded.
 
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -130,6 +130,29 @@ export function Login() {
   const [ssoOpen, setSsoOpen] = useState(false)
   const [ssoWorkspace, setSsoWorkspace] = useState("")
   const [ssoError, setSsoError] = useState<string | null>(null)
+
+  // SSO not-implemented banner (Phase 4 deferral). The SAML protocol /login
+  // and /acs routes 501 today; when the BE bounces the user back here it
+  // appends ?error=saml-not-implemented so we can surface a friendly toast +
+  // inline banner instead of a stale-page silence. Strip the param once
+  // surfaced so a refresh doesn't re-toast.
+  const [ssoNotAvailable, setSsoNotAvailable] = useState(false)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const url = new URL(window.location.href)
+    if (url.searchParams.get("error") === "saml-not-implemented") {
+      setSsoNotAvailable(true)
+      toast.error(
+        "SSO sign-in is not yet available; please use email + password while we finalise the SAML release.",
+      )
+      url.searchParams.delete("error")
+      const next =
+        url.pathname +
+        (url.searchParams.toString() ? `?${url.searchParams.toString()}` : "") +
+        url.hash
+      window.history.replaceState({}, "", next)
+    }
+  }, [])
 
   const {
     register,
@@ -366,6 +389,17 @@ export function Login() {
             </form>
           ) : (
             <form className="space-y-4" onSubmit={onSubmit} noValidate>
+              {ssoNotAvailable ? (
+                <Alert
+                  variant="destructive"
+                  data-testid="sso-not-implemented-banner"
+                >
+                  <AlertDescription>
+                    SSO sign-in is not yet available; please use email +
+                    password while we finalise the SAML release.
+                  </AlertDescription>
+                </Alert>
+              ) : null}
               <div className="space-y-1.5">
                 <Label htmlFor="email">Email</Label>
                 <Input

@@ -41,7 +41,6 @@ function renderSection() {
 
 const TOKEN: PersonalApiToken = {
   id: "tok_1",
-  userId: "u_1",
   name: "Deploy bot",
   prefix: "wrn_a1b2",
   scopes: [],

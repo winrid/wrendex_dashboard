@@ -144,7 +144,7 @@ describe("Login 2FA flow", () => {
     expect(backupInput.maxLength).toBe(8)
   })
 
-  it("surfaces a 401 from login2fa as 'That code is incorrect.'", async () => {
+  it("surfaces a 401 from login2fa as 'That code is incorrect.' and stays on the 2FA step", async () => {
     login.mockResolvedValue({
       sessionToken: "pending-token-abc",
       twoFactorRequired: true,
@@ -178,5 +178,49 @@ describe("Login 2FA flow", () => {
         /That code is incorrect/i,
       )
     })
+
+    // 401 should NOT bounce the user back to the password step; the 2FA
+    // form stays mounted so the user can re-try with a fresh code.
+    expect(screen.queryByTestId("two-factor-form")).toBeTruthy()
+  })
+
+  it("surfaces a 410 from login2fa as 'sign-in session expired' and resets to the password step", async () => {
+    login.mockResolvedValue({
+      sessionToken: "pending-token-abc",
+      twoFactorRequired: true,
+    })
+    const ApiErrorMod = await import("@/api/client")
+    login2fa.mockRejectedValue(
+      new ApiErrorMod.ApiError(410, "PENDING_TOKEN_EXPIRED", null),
+    )
+
+    renderLogin()
+
+    fireEvent.change(screen.getByLabelText("Email"), {
+      target: { value: "user@example.com" },
+    })
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "hunter22" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId("two-factor-form")).toBeTruthy()
+    })
+
+    fireEvent.change(screen.getByTestId("two-factor-code"), {
+      target: { value: "123456" },
+    })
+    fireEvent.click(screen.getByTestId("two-factor-submit"))
+
+    // 410 should bounce the user back to the password step (no two-factor
+    // form anymore) with the friendly inline server-error banner.
+    await waitFor(() => {
+      expect(screen.queryByTestId("two-factor-form")).toBeNull()
+    })
+    expect(screen.getByLabelText("Password")).toBeTruthy()
+    expect(
+      screen.getByText(/sign-in session expired/i),
+    ).toBeTruthy()
   })
 })

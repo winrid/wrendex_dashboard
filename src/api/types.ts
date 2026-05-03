@@ -693,7 +693,6 @@ export type Verify2faResponse = {
 
 export type PersonalApiToken = {
   id: string
-  userId: string
   name: string
   /** First 8 characters of the token (e.g. "wrn_a1b2"); safe to display. */
   prefix: string
@@ -1836,8 +1835,17 @@ export type SearchParams = {
   tenantId: string
   /** Default 20 (matches the BE cap). */
   limit?: number
+  /** Optional active-site hint. When the URL contains :siteId the FE forwards
+   *  it so the BE prefers the active site inside the per-tenant 5-site cap on
+   *  the indexed Sites slice. */
+  activeSiteId?: string
 }
 
 export type SearchResponse = {
   items: SearchResult[]
+  /** True when the BE clipped the result set against an internal cap (e.g.
+   *  the 5-site Sites cap). The FE renders a small footer explaining how to
+   *  refine the query when this flips on. Optional for back-compat with BE
+   *  builds that have not shipped the flag yet. */
+  truncated?: boolean
 }

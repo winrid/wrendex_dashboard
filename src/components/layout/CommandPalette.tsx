@@ -48,7 +48,10 @@ export function CommandPalette() {
   const [rawQuery, setRawQuery] = useState("")
   const [debouncedQuery, setDebouncedQuery] = useState("")
   const navigate = useNavigate()
-  const { tenantId = "default" } = useParams()
+  const { tenantId = "default", siteId: routeSiteId } = useParams<{
+    tenantId: string
+    siteId: string
+  }>()
   const items = getNavItems(tenantId)
   const client = useApiClient()
 
@@ -80,12 +83,28 @@ export function CommandPalette() {
   }, [rawQuery])
 
   const searchQ = useQuery({
-    queryKey: ["cmdk-search", tenantId, debouncedQuery],
+    queryKey: ["cmdk-search", tenantId, routeSiteId ?? null, debouncedQuery],
     queryFn: () =>
-      client.search({ q: debouncedQuery, tenantId, limit: 20 }),
+      client.search({
+        q: debouncedQuery,
+        tenantId,
+        limit: 20,
+        ...(routeSiteId ? { activeSiteId: routeSiteId } : {}),
+      }),
     enabled: open && debouncedQuery.length > 0,
     staleTime: 30_000,
   })
+
+  // The typed client returns SearchResponse; older test mocks may still
+  // resolve to a bare SearchResult[] array. Normalise both shapes so this
+  // component owns no test-only branches.
+  const searchData = searchQ.data
+  const items_ = Array.isArray(searchData)
+    ? (searchData as SearchResult[])
+    : searchData?.items ?? []
+  const truncated = Array.isArray(searchData)
+    ? false
+    : Boolean(searchData?.truncated)
 
   const grouped = useMemo(() => {
     const out: Record<SearchResultKind, SearchResult[]> = {
@@ -94,12 +113,12 @@ export function CommandPalette() {
       alert: [],
       check: [],
     }
-    for (const r of searchQ.data ?? []) {
+    for (const r of items_) {
       const kind = r.kind in out ? r.kind : null
       if (kind) out[kind].push(r)
     }
     return out
-  }, [searchQ.data])
+  }, [items_])
 
   const hasQuery = debouncedQuery.length > 0
   const hasAnyResult =
@@ -184,6 +203,16 @@ export function CommandPalette() {
             </CommandItem>
           ))}
         </CommandGroup>
+
+        {hasQuery && truncated ? (
+          <div
+            className="border-t px-3 py-2 text-[11px] text-muted-foreground"
+            data-testid="cmdk-truncated-footer"
+          >
+            Showing the most recently crawled sites. Try a more specific
+            query for older sites.
+          </div>
+        ) : null}
       </CommandList>
     </CommandDialog>
   )
