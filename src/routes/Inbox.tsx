@@ -257,7 +257,7 @@ export function Inbox() {
   // ---- Bulk mutations ------------------------------------------------------
 
   const onBulkSettled = (resp: BulkActionResponse | undefined) => {
-    const n = resp?.updated ?? selectedIds(rowSelection).length
+    const n = resp?.updatedCount ?? selectedIds(rowSelection).length
     toast.success(`${n} alerts updated`)
     setRowSelection({})
     void queryClient.invalidateQueries({ queryKey: ["site-alerts"] })

@@ -125,8 +125,7 @@ external component libraries.
   (R.08). Reads `getResources`; tabs for Images / Scripts / Stylesheets.
 - `/t/:tenantId/sites/:siteId/health-history` - HealthHistory (R.01).
   ComposedChart of `getHealthScore` + a per-crawl DataTable with delta vs
-  previous. Overlays deploy pins from `listReleaseAnnotations`; the call
-  is wrapped in try/catch so a 404/5xx renders the page without pins.
+  previous.
 - `/t/:tenantId/sites/:siteId/crawls/:crawlId/links` - LinkExplorer (R.03).
   Server-paginated grid over `exploreLinks`; type filter is server-side,
   rel + URL search are client-side filters on the loaded page; row click
@@ -193,11 +192,15 @@ TanStack Table state. The selection is keyed on `Alert.id` (via
 `getRowId`), so toggles persist across server-paginated page changes. When
 1+ rows are selected, `Inbox.tsx` renders `BulkActionToolbar` above the
 table with Ignore / Snooze (24h / 7d) / Assign / Unignore actions; each
-button calls into the typed-client `bulk*` methods (PATCH /api/alerts/bulk/*).
+button calls into the typed-client `bulk*` methods (PATCH /api/bulk/alerts/*).
 A per-row kebab dropdown surfaces the same set of single-row actions
 (snoozeAlert / assignAlert / ignoreAlert). The Snoozed tab binds to
 `?status=SNOOZED`; the Inbox falls back to an empty result when the BE
 4xxs the SNOOZED enum.
+
+Bulk endpoints live under `/api/bulk/alerts/*` (PATCH ignore / unignore /
+snooze / assign). Single-alert routes live under `/api/alerts/{id}/*` and
+all use PATCH (snooze, unsnooze, assign).
 
 ## Slack OAuth install flow (sec 8.2, FE-D)
 
@@ -226,28 +229,27 @@ Per-tenant alert channels, ordered by ship date:
 
   - Email channel - shipped iter 1; MEMBERS / CUSTOM / BOTH selector +
     chip recipients.
-  - Slack channel - BE wired (iter 1), FE install flow deferred. Surfaces
-    a placeholder card.
+  - Slack channel - BE wired (iter 1) + FE install flow shipped (see the
+    "Slack OAuth install flow" section above).
   - MS Teams channel - BE iter 2 round 2; FE form gated to
     PROFESSIONAL+ plans. Webhook URL only; "Send test alert" stub.
   - PagerDuty channel - BE iter 2 round 2; FE form gated to AGENCY plans.
     Integration key + severity floor; "Send test alert" stub.
 
-## Phase 1.5 cleanups (now landed)
+## Stripe + auth flows
 
-- **Stripe Elements signup card capture (sec 1.2 step 3)** is now real.
-  The typed client `createSetupIntent` hits POST
-  /api/tenants/{tenantId}/billing/setup-intent (BE iter 2 round 1). The
-  Signup route mounts `<Elements>` against the returned `client_secret`
+- **Stripe Elements signup card capture (sec 1.2 step 3).** The typed client
+  `createSetupIntent` hits POST /api/tenants/{tenantId}/billing/setup-intent.
+  The Signup route mounts `<Elements>` against the returned `client_secret`
   when a `claimToken` is present; on confirm we persist the resulting
   payment method id under `wrendex.pendingPaymentMethodId` and call
   `createCheckoutSession({priceTier: "PROFESSIONAL", trialDays: 14})` to
   start the trial. Falls back to legacy redirect-to-Checkout when
   `VITE_STRIPE_PUBLISHABLE_KEY` is unset (dev / test).
-- **Change password (sec 14.1)** is wired to POST
-  /api/auth/password/change (BE iter 2 round 1). Settings -> Account ships
-  a real RHF + zod form; 401 surfaces inline against the current-password
-  field, 400 against the new-password field, 204 toasts success.
+- **Change password (sec 14.1).** POST /api/auth/password/change. Settings
+  -> Account ships a real RHF + zod form; 401 surfaces inline against the
+  current-password field, 400 against the new-password field, 204 toasts
+  success.
 
 ## Funnel telemetry contract (sec 2.0 + 16)
 

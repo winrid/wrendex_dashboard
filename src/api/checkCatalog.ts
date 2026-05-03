@@ -1750,15 +1750,49 @@ export function setActiveCatalog(
   INDEX = buildIndex(ACTIVE)
 }
 
+// Module-level "did hydrate" flag. The catalog payload is large (142+ rows)
+// and changes only on backend deploy; once hydrated we treat the in-memory
+// ACTIVE cache as authoritative for the lifetime of this JS context. This
+// keeps navigating away and back to /catalog from re-fetching on every mount.
+// Tests can reset this via resetHydrationState().
+let HYDRATED_AT: number | null = null
+let IN_FLIGHT: Promise<readonly CheckCatalogEntry[]> | null = null
+
+/** Test-only: clear the hydration flag so the next call hits the backend. */
+export function resetHydrationState(): void {
+  HYDRATED_AT = null
+  IN_FLIGHT = null
+}
+
 /** Pull the BE catalog and hydrate the in-memory cache. Logs a console.warn
  *  on drift between FE static entries and BE response. Resolves silently on
- *  4xx/5xx so the FE keeps the static fallback. */
+ *  4xx/5xx so the FE keeps the static fallback.
+ *
+ *  Idempotent across the JS context: subsequent calls short-circuit to the
+ *  already-hydrated ACTIVE list. Concurrent calls share a single in-flight
+ *  promise so a fast double-mount doesn't fan out two GETs. */
 export async function hydrateCatalogFromBackend(
+  client: HydrateCatalogClient,
+): Promise<readonly CheckCatalogEntry[]> {
+  if (HYDRATED_AT !== null) return ACTIVE
+  if (IN_FLIGHT) return IN_FLIGHT
+  IN_FLIGHT = doHydrate(client).finally(() => {
+    IN_FLIGHT = null
+  })
+  return IN_FLIGHT
+}
+
+async function doHydrate(
   client: HydrateCatalogClient,
 ): Promise<readonly CheckCatalogEntry[]> {
   try {
     const remote = (await client.getPublicCatalog()) as CheckCatalogEntry[]
-    if (!Array.isArray(remote) || remote.length === 0) return ACTIVE
+    if (!Array.isArray(remote) || remote.length === 0) {
+      // Treat an empty BE response as "hydrated" too; otherwise we'd retry on
+      // every Catalog mount even though the BE clearly answered.
+      HYDRATED_AT = Date.now()
+      return ACTIVE
+    }
     // Drift detection: warn for any FE entry whose title / category differ
     // from the BE entry. This is best-effort - the FE remains the source of
     // truth for human-readable copy.
@@ -1789,9 +1823,12 @@ export async function hydrateCatalogFromBackend(
       )
     }
     setActiveCatalog(remote)
+    HYDRATED_AT = Date.now()
     return ACTIVE
   } catch {
-    // Swallow - keep the static fallback active.
+    // Swallow - keep the static fallback active. Do NOT flip HYDRATED_AT, so
+    // a transient failure (network blip, cold start) gets retried on the next
+    // mount.
     return ACTIVE
   }
 }

@@ -473,23 +473,36 @@ function TeamsChannelCard({ tenantId }: { tenantId: string }) {
       try {
         return await client.getTeamsChannel(tenantId)
       } catch (e) {
-        if (isApiError(e) && e.status === 404) return null
+        // 404 = not configured; 403 = plan-gated. Both surface as "no channel"
+        // for the card; the disabled flag (driven by BillingSnapshot.plan)
+        // is what surfaces the Pro plan only badge.
+        if (isApiError(e) && (e.status === 404 || e.status === 403)) return null
         throw e
       }
     },
     enabled: Boolean(tenantId),
     retry: (failureCount, error) => {
-      if (error instanceof ApiError && error.status === 404) return false
+      if (
+        error instanceof ApiError &&
+        (error.status === 404 || error.status === 403)
+      )
+        return false
       return failureCount < 1
     },
   })
 
+  // Local input state. We never receive the webhook URL back from the BE
+  // (it's redacted as a secret), so we keep a separate draft string and rely
+  // on `channelQ.data?.webhookUrlConfigured` to display the "Configured
+  // (hidden)" placeholder.
   const [webhookUrl, setWebhookUrl] = useState("")
   const [error, setErrorMsg] = useState<string | null>(null)
 
+  // Reset the draft whenever the server snapshot flips between configured
+  // and not-configured (e.g. after Disconnect).
   useEffect(() => {
-    if (channelQ.data) setWebhookUrl(channelQ.data.webhookUrl)
-  }, [channelQ.data])
+    setWebhookUrl("")
+  }, [channelQ.data?.webhookUrlConfigured])
 
   const saveMut = useMutation({
     mutationFn: () =>
@@ -555,7 +568,11 @@ function TeamsChannelCard({ tenantId }: { tenantId: string }) {
           <Input
             id="teams-webhook"
             type="url"
-            placeholder="https://outlook.office.com/webhook/..."
+            placeholder={
+              channelQ.data?.webhookUrlConfigured
+                ? "Configured (hidden)"
+                : "https://outlook.office.com/webhook/..."
+            }
             value={webhookUrl}
             onChange={(e) => setWebhookUrl(e.target.value)}
             disabled={disabled || channelQ.isLoading}
@@ -619,13 +636,20 @@ function PagerDutyChannelCard({ tenantId }: { tenantId: string }) {
       try {
         return await client.getPagerDutyChannel(tenantId)
       } catch (e) {
-        if (isApiError(e) && e.status === 404) return null
+        // 404 = not configured; 403 = plan-gated. Both surface as "no channel"
+        // for the card; the disabled flag (driven by BillingSnapshot.plan)
+        // is what surfaces the Agency only badge.
+        if (isApiError(e) && (e.status === 404 || e.status === 403)) return null
         throw e
       }
     },
     enabled: Boolean(tenantId),
     retry: (failureCount, error) => {
-      if (error instanceof ApiError && error.status === 404) return false
+      if (
+        error instanceof ApiError &&
+        (error.status === 404 || error.status === 403)
+      )
+        return false
       return failureCount < 1
     },
   })
@@ -699,8 +723,8 @@ function PagerDutyChannelCard({ tenantId }: { tenantId: string }) {
             id="pagerduty-key"
             type="text"
             placeholder={
-              channelQ.data?.integrationKeyPreview
-                ? `Configured (${channelQ.data.integrationKeyPreview})`
+              channelQ.data?.integrationKeyConfigured
+                ? "Configured (hidden)"
                 : "Paste your PagerDuty integration key"
             }
             value={integrationKey}

@@ -5,9 +5,13 @@
 // shipped yet at the moment this code lands; we surface a friendly empty
 // state when the GET 404s so we degrade gracefully.
 //
-// Filters: channel multi-select (EMAIL / SLACK / TEAMS / PAGERDUTY), status
+// Filters: channel single-select (EMAIL / SLACK / TEAMS / PAGERDUTY), status
 // multi-select (QUEUED / SENT / FAILED), and a "since" preset (1d / 7d /
 // 30d / all-time).
+//
+// NOTE: channel is single-select because the BE accepts a single value per
+// param. Multi-channel filtering would require parallel queries + a
+// client-side merge; revisit when product asks for it.
 //
 // Per-row Resend button calls resendNotification and toasts the new
 // deliveryId so the user can correlate.
@@ -38,6 +42,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -110,7 +115,9 @@ export function NotificationLog() {
     pageSize: 25,
   })
   const [sorting, setSorting] = useState<SortingState>([])
-  const [channels, setChannels] = useState<NotificationChannel[]>([])
+  // Channel is single-select (BE accepts one value per param). null = no
+  // filter. See top-of-file note for the multi-channel rationale.
+  const [channel, setChannel] = useState<NotificationChannel | null>(null)
   const [statuses, setStatuses] = useState<NotificationStatus[]>([])
   const [since, setSince] = useState<SincePreset>("7d")
 
@@ -123,12 +130,12 @@ export function NotificationLog() {
     () => ({
       page: pagination.pageIndex,
       size: pagination.pageSize,
-      channel: channels.length > 0 ? channels.join(",") : undefined,
+      channel: channel ?? undefined,
       status: statuses.length > 0 ? statuses.join(",") : undefined,
       since: sinceIso(since),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [pagination, channels, statuses, since],
+    [pagination, channel, statuses, since],
   )
 
   const logQ = useQuery<NotificationLogResult | null>({
@@ -157,7 +164,7 @@ export function NotificationLog() {
       channel: NotificationChannel
     }) => client.resendNotification(tenantId, deliveryId, { channel }),
     onSuccess: (resp) => {
-      toast.success(`Re-queued. New deliveryId: ${resp.deliveryId}`)
+      toast.success(`Re-queued. New deliveryId: ${resp.newDeliveryId}`)
       void queryClient.invalidateQueries({ queryKey: ["notification-log"] })
     },
     onError: () => toast.error("Could not resend notification"),
@@ -170,11 +177,11 @@ export function NotificationLog() {
   const columns = useMemo<ColumnDef<NotificationLogEntry>[]>(
     () => [
       {
-        id: "createdAt",
+        id: "queuedAt",
         header: "When",
         cell: ({ row }) => (
-          <span title={row.original.createdAt} className="text-xs">
-            {relativeTime(row.original.createdAt)}
+          <span title={row.original.queuedAt} className="text-xs">
+            {relativeTime(row.original.queuedAt)}
           </span>
         ),
       },
@@ -295,10 +302,8 @@ export function NotificationLog() {
     )
   }
 
-  const toggleChannel = (c: NotificationChannel, on: boolean) => {
-    setChannels((prev) =>
-      on ? Array.from(new Set([...prev, c])) : prev.filter((x) => x !== c),
-    )
+  const selectChannel = (c: NotificationChannel | null) => {
+    setChannel(c)
     setPagination((p) => ({ ...p, pageIndex: 0 }))
   }
 
@@ -331,9 +336,9 @@ export function NotificationLog() {
               data-testid="channel-filter"
             >
               Channel
-              {channels.length > 0 ? (
+              {channel ? (
                 <span className="ml-1 rounded bg-muted px-1 text-xs tabular-nums">
-                  {channels.length}
+                  {channel}
                 </span>
               ) : null}
               <ChevronDownIcon />
@@ -342,15 +347,16 @@ export function NotificationLog() {
           <DropdownMenuContent align="start">
             <DropdownMenuLabel>Channel</DropdownMenuLabel>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => selectChannel(null)}>
+              All channels
+            </DropdownMenuItem>
             {CHANNELS.map((c) => (
-              <DropdownMenuCheckboxItem
+              <DropdownMenuItem
                 key={c}
-                checked={channels.includes(c)}
-                onCheckedChange={(v) => toggleChannel(c, Boolean(v))}
-                onSelect={(e) => e.preventDefault()}
+                onSelect={() => selectChannel(c)}
               >
                 {c}
-              </DropdownMenuCheckboxItem>
+              </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
         </DropdownMenu>

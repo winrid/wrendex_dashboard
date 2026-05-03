@@ -537,7 +537,7 @@ export function createApiClient(opts: CreateApiClientOptions) {
     alertId: string,
     userId: string | null,
   ): Promise<Alert> {
-    return request<Alert>("POST", `/api/alerts/${alertId}/assign`, {
+    return request<Alert>("PATCH", `/api/alerts/${alertId}/assign`, {
       body: { userId },
     })
   }

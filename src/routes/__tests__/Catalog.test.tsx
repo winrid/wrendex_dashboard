@@ -15,6 +15,7 @@ import {
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { PublicCatalogEntry } from "@/api/types"
+import { resetHydrationState } from "@/api/checkCatalog"
 
 const getPublicCatalog = vi.fn()
 const listSitesByTenant = vi.fn()
@@ -78,6 +79,8 @@ describe("Catalog explorer", () => {
     listSitesByTenant.mockReset()
     listSiteAlerts.mockReset()
     listCrawlsBySite.mockReset()
+    // Reset the module-level hydration cache so each test re-fetches.
+    resetHydrationState()
   })
 
   it("renders catalog entries hydrated from the BE", async () => {

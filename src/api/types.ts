@@ -924,7 +924,8 @@ export type NotificationLogEntry = {
   alertId?: string | null
   attemptCount: number
   lastErrorMessage?: string | null
-  createdAt: string
+  /** ISO 8601 timestamp the delivery row was queued (BE field name). */
+  queuedAt: string
   sentAt?: string | null
   /** Originating site for the alert (when applicable). */
   siteId?: string | null
@@ -940,12 +941,13 @@ export type NotificationLogResult = {
 export type ListNotificationLogParams = {
   page?: number
   size?: number
-  /** When more than one channel/status is supplied the FE joins them with
-   *  commas; the BE accepts a single value per param (CSV style or repeated).
-   *  We pass the comma-joined form for now and degrade client-side if needed. */
+  /** Single channel filter. The BE accepts a single value per param; the FE
+   *  surfaces a single-select dropdown to match. Multi-channel filtering is
+   *  intentionally not supported - revisit when product needs it (would
+   *  require parallel queries + client-side merge). */
   channel?: NotificationChannel | string
   status?: NotificationStatus | string
-  /** ISO 8601 lower bound for `createdAt`. */
+  /** ISO 8601 lower bound for `queuedAt`. */
   since?: string
 }
 
@@ -954,7 +956,8 @@ export type ResendNotificationInput = {
 }
 
 export type ResendNotificationResponse = {
-  deliveryId: string
+  /** Id of the freshly enqueued delivery row (BE field name). */
+  newDeliveryId: string
 }
 
 // ---------------------------------------------------------------------------
@@ -966,7 +969,10 @@ export type ResendNotificationResponse = {
 export type TeamsChannel = {
   id: string
   tenantId: string
-  webhookUrl: string
+  /** True once a webhook URL has been stored. The BE never returns the
+   *  webhook URL itself (it is a secret); use this flag to drive the
+   *  "Configured (hidden)" placeholder in the form. */
+  webhookUrlConfigured: boolean
   createdAt: string
   updatedAt: string
 }
@@ -980,8 +986,10 @@ export type SeverityFloor = "ERROR" | "WARNING" | "NOTICE"
 export type PagerDutyChannel = {
   id: string
   tenantId: string
-  /** The integration key is a secret; the BE returns a redacted preview only. */
-  integrationKeyPreview?: string | null
+  /** True once an integration key has been stored. The BE never returns the
+   *  integration key itself (it is a secret); use this flag to drive the
+   *  "Configured (hidden)" placeholder in the form. */
+  integrationKeyConfigured: boolean
   severityFloor: SeverityFloor
   createdAt: string
   updatedAt: string
@@ -1028,7 +1036,7 @@ export type BulkAssignRequest = BulkAlertActionRequest & {
 }
 
 export type BulkActionResponse = {
-  updated: number
+  updatedCount: number
 }
 
 export type SnoozeAlertInput = {
@@ -1087,10 +1095,34 @@ export type StatusComponent = {
   updatedAt?: string | null
 }
 
+export type StatusIncident = {
+  id: string
+  componentId?: string | null
+  status?: StatusLevel | string | null
+  title?: string | null
+  body?: string | null
+  startedAt?: string | null
+  resolvedAt?: string | null
+}
+
+export type StatusSloTargets = {
+  /** API uptime ratio (0..1). */
+  api?: number
+  /** Crawler uptime ratio (0..1). */
+  crawler?: number
+  /** Scheduler tick latency p95 in ms. */
+  scheduler_p95Ms?: number
+  [key: string]: number | undefined
+}
+
 export type StatusResponse = {
   /** Overall rollup; usually max(component.status) by severity. */
   status: StatusLevel
   /** As-of timestamp for the snapshot. */
   updatedAt: string
   components: StatusComponent[]
+  /** Active or recently resolved incidents; usually empty. */
+  incidents?: StatusIncident[]
+  /** Per-service SLO targets surfaced for the trust strip. */
+  sloTargets?: StatusSloTargets
 }

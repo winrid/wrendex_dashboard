@@ -45,7 +45,7 @@ function makeEntry(
     alertId: "alert_1",
     attemptCount: 1,
     lastErrorMessage: null,
-    createdAt: "2026-04-30T10:00:00Z",
+    queuedAt: "2026-04-30T10:00:00Z",
     sentAt: "2026-04-30T10:00:01Z",
     siteId: "s_1",
   }
@@ -90,7 +90,7 @@ describe("NotificationLog", () => {
         makeEntry("d_2", "SLACK"),
       ]),
     )
-    resendNotification.mockResolvedValue({ deliveryId: "d_99" })
+    resendNotification.mockResolvedValue({ newDeliveryId: "d_99" })
 
     renderRoute()
 
@@ -102,7 +102,7 @@ describe("NotificationLog", () => {
     expect(screen.getAllByRole("button", { name: "Resend" }).length).toBe(2)
   })
 
-  it("narrows the API params when the channel filter is toggled", async () => {
+  it("narrows the API params when the channel filter is selected", async () => {
     listNotificationLog.mockResolvedValue(makeResult([]))
 
     renderRoute()
@@ -115,9 +115,7 @@ describe("NotificationLog", () => {
     const trigger = screen.getByTestId("channel-filter")
     fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" })
     fireEvent.click(trigger)
-    const emailItem = await screen.findByRole("menuitemcheckbox", {
-      name: "EMAIL",
-    })
+    const emailItem = await screen.findByRole("menuitem", { name: "EMAIL" })
     fireEvent.click(emailItem)
     await waitFor(() => {
       const last = listNotificationLog.mock.calls.at(-1)
@@ -129,7 +127,7 @@ describe("NotificationLog", () => {
     listNotificationLog.mockResolvedValue(
       makeResult([makeEntry("d_1", "EMAIL")]),
     )
-    resendNotification.mockResolvedValue({ deliveryId: "d_99" })
+    resendNotification.mockResolvedValue({ newDeliveryId: "d_99" })
 
     renderRoute()
 
