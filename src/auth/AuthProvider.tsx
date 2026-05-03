@@ -182,12 +182,40 @@ export function AuthProvider({ children, skipBootstrap = false }: AuthProviderPr
   // Hydrate on mount: if a token is in localStorage, push it into the client
   // and call /api/me. A 401 means the stored token is stale; clear it so the
   // app shows the login page.
+  //
+  // SAML SSO post-ACS handoff (P4 iter 4): when the IdP completes assertion
+  // validation the BE 302s the browser back to the dashboard with the
+  // session token in the URL fragment as #sessionToken=... so it never hits
+  // a server log. We pluck it out before the /api/me bootstrap, persist it
+  // (replacing any stale token), and strip the fragment from the URL so a
+  // refresh doesn't re-trigger the handoff.
   useEffect(() => {
     if (skipBootstrap) return
     if (didBootstrap.current) return
     didBootstrap.current = true
 
-    const stored = readStoredToken()
+    let stored = readStoredToken()
+    if (typeof window !== "undefined") {
+      const hash = window.location.hash ?? ""
+      if (hash.startsWith("#")) {
+        const params = new URLSearchParams(hash.slice(1))
+        const ssoToken = params.get("sessionToken")
+        if (ssoToken && ssoToken.length > 0) {
+          writeStoredToken(ssoToken)
+          stored = ssoToken
+          // Best-effort: drop the fragment so a refresh doesn't replay it
+          // and so the bearer token never lingers in the address bar.
+          try {
+            const cleanUrl =
+              window.location.pathname + window.location.search
+            window.history.replaceState(null, "", cleanUrl)
+          } catch {
+            // ignore; the token is already persisted to localStorage.
+          }
+        }
+      }
+    }
+
     if (!stored) {
       setIsLoading(false)
       return

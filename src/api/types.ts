@@ -1306,6 +1306,19 @@ export type TenantBranding = {
   /** When true, hide the "Powered by Wrendex" footer on shared / PDF
    *  reports. AGENCY-only feature; BE 403s for lower tiers. */
   hidePoweredBy?: boolean | null
+  /** Custom subdomain for white-labelled access (e.g. "audits.acme.com").
+   *  AGENCY-only. Configures DNS pointer only; TLS provisioning lands in
+   *  Phase 5+ infra work. */
+  customSubdomain?: string | null
+  /** Set when the BE last verified the customer's CNAME points to
+   *  wrendex.com and resolves. Null while unverified. */
+  customSubdomainVerifiedAt?: string | null
+  /** Timestamp of the most recent DNS check, regardless of outcome. */
+  lastDnsCheckAt?: string | null
+  /** Result of the most recent DNS check. "ok" when the CNAME resolves
+   *  correctly; otherwise an error string ("nxdomain", "wrong_target",
+   *  etc.) suitable for surfacing inline. */
+  lastDnsCheckResult?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -1315,6 +1328,49 @@ export type UpdateTenantBrandingInput = {
   accentColor?: string | null
   fromName?: string | null
   hidePoweredBy?: boolean | null
+  /** AGENCY-only. Pass an empty string or null to clear. */
+  customSubdomain?: string | null
+}
+
+/** Response from POST /api/tenants/{tenantId}/branding/verify-subdomain.
+ *  The BE re-checks the customer's CNAME against the expected target and
+ *  echoes back the verification fields (verifiedAt non-null + result=="ok"
+ *  means the subdomain is live). */
+export type VerifySubdomainResponse = {
+  verified: boolean
+  customSubdomain?: string | null
+  lastDnsCheckResult?: string | null
+  lastDnsCheckAt?: string | null
+}
+
+// ---------------------------------------------------------------------------
+// SAML SSO config (P4 iter 4 BE). AGENCY+OWNER-only feature. The BE owns
+// the IdP-side metadata + assertion validation; the FE just collects the
+// three required IdP fields and surfaces the SP metadata URL the customer's
+// IdP admin needs to register Wrendex as a Service Provider.
+// ---------------------------------------------------------------------------
+
+export type TenantSamlConfig = {
+  id: string
+  tenantId: string
+  /** IdP entity ID (typically a URL). */
+  idpEntityId: string
+  /** IdP single-sign-on URL the SP redirects users to. */
+  idpSsoUrl: string
+  /** PEM-encoded X.509 cert used to validate IdP-signed assertions. */
+  idpCertX509: string
+  /** When false the config is preserved but SAML logins are blocked. */
+  enabled: boolean
+  createdAt: string
+  updatedAt: string
+  configuredByUserId: string
+}
+
+export type UpdateSamlConfigInput = {
+  idpEntityId: string
+  idpSsoUrl: string
+  idpCertX509: string
+  enabled?: boolean
 }
 
 // ---------------------------------------------------------------------------

@@ -27,7 +27,10 @@ import type {
   SlackChannel,
   TeamsChannel,
   TenantBranding,
+  TenantSamlConfig,
+  VerifySubdomainResponse,
 } from "@/api/types"
+import { spMetadataUrl } from "@/lib/sso"
 import {
   Tabs,
   TabsContent,
@@ -57,6 +60,16 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Toaster } from "@/components/ui/sonner"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { SharingTab } from "@/components/share/SharingTab"
 import { TwoFactorSection } from "@/components/account/TwoFactorSection"
 import { ApiTokensSection } from "@/components/account/ApiTokensSection"
@@ -306,6 +319,8 @@ function TenantTab({ tenantId }: { tenantId: string }) {
       <TeamsChannelCard tenantId={tenantId} />
       <PagerDutyChannelCard tenantId={tenantId} />
       <BrandingCard tenantId={tenantId} />
+      <CustomSubdomainCard tenantId={tenantId} />
+      <SamlConfigCard tenantId={tenantId} />
     </div>
   )
 }
@@ -612,6 +627,693 @@ export function BrandingCard({ tenantId }: { tenantId: string }) {
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Custom subdomain card (P4 iter 4). AGENCY-only feature; lower tiers see
+// the form disabled with the same Agency plan only badge as branding.
+//
+// Scope: this UI only configures the customer's CNAME pointer (record stays
+// on the customer's DNS, points at wrendex.com) and surfaces the BE's most
+// recent CNAME-resolution check. TLS cert provisioning + reverse-proxy
+// routing for the subdomain is Phase 5+ infra work and is intentionally
+// out of scope for this iteration.
+//
+// State machine surfaced via the verification pill:
+//   - customSubdomainVerifiedAt == null      -> "Not verified" + CNAME hint
+//   - verifiedAt set + lastDnsCheckResult==ok -> "Verified" (green)
+//   - lastDnsCheckResult set, non-"ok"        -> "Issue: <result>" (amber)
+// ---------------------------------------------------------------------------
+
+const CUSTOM_SUBDOMAIN_CNAME_TARGET = "wrendex.com"
+
+export function CustomSubdomainCard({ tenantId }: { tenantId: string }) {
+  const client = useApiClient()
+  const queryClient = useQueryClient()
+
+  const billingQ = useQuery<BillingSnapshot>({
+    queryKey: ["billing", tenantId],
+    queryFn: () => client.getBilling(tenantId),
+    enabled: Boolean(tenantId),
+  })
+
+  const brandingQ = useQuery<TenantBranding | null>({
+    queryKey: ["branding", tenantId],
+    queryFn: async () => {
+      try {
+        return await client.getBranding(tenantId)
+      } catch (e) {
+        if (isApiError(e) && (e.status === 404 || e.status === 403)) return null
+        throw e
+      }
+    },
+    enabled: Boolean(tenantId),
+    retry: (failureCount, error) => {
+      if (
+        error instanceof ApiError &&
+        (error.status === 404 || error.status === 403)
+      )
+        return false
+      return failureCount < 1
+    },
+  })
+
+  const [subdomain, setSubdomain] = useState("")
+  // Track whether the user has edited the input so we don't stomp their
+  // typing every time react-query refetches the branding row.
+  const [touched, setTouched] = useState(false)
+
+  useEffect(() => {
+    if (touched) return
+    setSubdomain(brandingQ.data?.customSubdomain ?? "")
+  }, [brandingQ.data, touched])
+
+  const saveMut = useMutation({
+    mutationFn: () =>
+      client.updateBranding(tenantId, {
+        customSubdomain: subdomain.trim() || null,
+      }),
+    onSuccess: (next) => {
+      queryClient.setQueryData<TenantBranding>(["branding", tenantId], next)
+      setTouched(false)
+      toast.success("Custom subdomain saved")
+    },
+    onError: (e) => {
+      if (isApiError(e) && e.status === 403) {
+        toast.error(
+          "Custom subdomains are an Agency plan feature. Upgrade in Billing.",
+          {
+            action: {
+              label: "Upgrade",
+              onClick: () => {
+                window.location.href = `/t/${tenantId}/billing`
+              },
+            },
+          },
+        )
+        return
+      }
+      toast.error("Could not save subdomain. Please try again.")
+    },
+  })
+
+  const verifyMut = useMutation<VerifySubdomainResponse>({
+    mutationFn: () => client.verifySubdomain(tenantId),
+    onSuccess: (next) => {
+      // Merge the verify response back onto the cached branding row so the
+      // pill flips immediately without a refetch.
+      queryClient.setQueryData<TenantBranding | null>(
+        ["branding", tenantId],
+        (old) => {
+          if (!old) return old
+          return {
+            ...old,
+            customSubdomain: next.customSubdomain ?? old.customSubdomain,
+            customSubdomainVerifiedAt: next.verified
+              ? next.lastDnsCheckAt ?? old.customSubdomainVerifiedAt ?? null
+              : old.customSubdomainVerifiedAt ?? null,
+            lastDnsCheckAt:
+              next.lastDnsCheckAt ?? old.lastDnsCheckAt ?? null,
+            lastDnsCheckResult:
+              next.lastDnsCheckResult ?? old.lastDnsCheckResult ?? null,
+          }
+        },
+      )
+      if (next.verified && next.lastDnsCheckResult === "ok") {
+        toast.success("Subdomain verified")
+      } else {
+        toast.error(
+          `DNS check failed: ${next.lastDnsCheckResult ?? "unknown error"}`,
+        )
+      }
+    },
+    onError: (e) => {
+      if (isApiError(e) && e.status === 403) {
+        toast.error("Custom subdomains are an Agency plan feature.")
+        return
+      }
+      toast.error("Could not run DNS check.")
+    },
+  })
+
+  const plan = billingQ.data?.plan
+  const isAgency = planAtLeast(plan, "AGENCY")
+  const disabled = !isAgency
+
+  const branding = brandingQ.data
+  const verifiedAt = branding?.customSubdomainVerifiedAt ?? null
+  const lastResult = branding?.lastDnsCheckResult ?? null
+  const isVerified = Boolean(verifiedAt) && lastResult === "ok"
+  const hasIssue = Boolean(lastResult) && lastResult !== "ok"
+
+  return (
+    <Card data-testid="custom-subdomain-card">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          Custom subdomain
+          {disabled ? (
+            <span
+              className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
+              data-testid="custom-subdomain-plan-gate"
+            >
+              Agency plan only
+            </span>
+          ) : null}
+        </CardTitle>
+        <CardDescription>
+          Serve Wrendex from your own domain (e.g. audits.acme.com). Configures
+          the CNAME pointer only; TLS provisioning ships in a later release.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="custom-subdomain-input">Subdomain</Label>
+          <Input
+            id="custom-subdomain-input"
+            data-testid="custom-subdomain-input"
+            type="text"
+            placeholder="audits.acme.com"
+            value={subdomain}
+            onChange={(e) => {
+              setSubdomain(e.target.value)
+              setTouched(true)
+            }}
+            disabled={disabled}
+            className="max-w-md"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {isVerified ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200"
+              data-testid="custom-subdomain-pill-verified"
+            >
+              Verified
+            </span>
+          ) : hasIssue ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900 dark:bg-amber-900/40 dark:text-amber-100"
+              data-testid="custom-subdomain-pill-issue"
+            >
+              Issue: {lastResult}
+            </span>
+          ) : (
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
+              data-testid="custom-subdomain-pill-unverified"
+            >
+              Not verified
+            </span>
+          )}
+        </div>
+
+        {!isVerified ? (
+          <p className="text-xs text-muted-foreground">
+            Add a CNAME record from{" "}
+            <span className="font-mono">
+              {subdomain.trim() || "your subdomain"}
+            </span>{" "}
+            to{" "}
+            <span className="font-mono">{CUSTOM_SUBDOMAIN_CNAME_TARGET}</span>,
+            then click Check DNS.
+          </p>
+        ) : null}
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            onClick={() => saveMut.mutate()}
+            disabled={disabled || saveMut.isPending}
+            data-testid="custom-subdomain-save"
+          >
+            {saveMut.isPending ? "Saving..." : "Save"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => verifyMut.mutate()}
+            disabled={
+              disabled || verifyMut.isPending || !subdomain.trim()
+            }
+            data-testid="custom-subdomain-verify"
+          >
+            {verifyMut.isPending ? "Checking..." : "Check DNS"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// SAML SSO config card (P4 iter 4). AGENCY-only feature; the BE 403s the
+// PUT for non-OWNER members but the FE doesn't know the role here, so we
+// surface the 403 inline if it lands.
+//
+// Three states the card has to render:
+//   - 404 from getSamlConfig: "SSO is not configured." + Configure SAML
+//   - 200 from getSamlConfig: summary card with Edit / Disconnect
+//   - non-AGENCY plan: form disabled, Agency plan only badge
+//
+// The Configure SAML dialog is two visual steps in one form:
+//   Step 1: SP metadata URL with copy button (the customer downloads this
+//           XML and uploads it to their IdP to register Wrendex).
+//   Step 2: Form for the three IdP fields (entity id, SSO url, X.509 cert).
+//
+// Bad-cert handling: BE returns 400 when the PEM doesn't parse; we pin
+// that error to the cert textarea inline rather than toasting.
+// ---------------------------------------------------------------------------
+
+const PEM_HINT_RE = /-----BEGIN CERTIFICATE-----/
+
+function SamlConfigCard({ tenantId }: { tenantId: string }) {
+  const client = useApiClient()
+  const queryClient = useQueryClient()
+
+  const billingQ = useQuery<BillingSnapshot>({
+    queryKey: ["billing", tenantId],
+    queryFn: () => client.getBilling(tenantId),
+    enabled: Boolean(tenantId),
+  })
+
+  const samlQ = useQuery<TenantSamlConfig | null>({
+    queryKey: ["saml-config", tenantId],
+    queryFn: async () => {
+      try {
+        return await client.getSamlConfig(tenantId)
+      } catch (e) {
+        if (isApiError(e) && (e.status === 404 || e.status === 403)) return null
+        throw e
+      }
+    },
+    enabled: Boolean(tenantId),
+    retry: (failureCount, error) => {
+      if (
+        error instanceof ApiError &&
+        (error.status === 404 || error.status === 403)
+      )
+        return false
+      return failureCount < 1
+    },
+  })
+
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false)
+
+  const disconnectMut = useMutation({
+    mutationFn: () => client.deleteSamlConfig(tenantId),
+    onSuccess: () => {
+      queryClient.setQueryData<TenantSamlConfig | null>(
+        ["saml-config", tenantId],
+        null,
+      )
+      setConfirmDisconnect(false)
+      toast.success("SAML SSO disconnected")
+    },
+    onError: () => toast.error("Could not disconnect SAML"),
+  })
+
+  const plan = billingQ.data?.plan
+  const isAgency = planAtLeast(plan, "AGENCY")
+  const disabled = !isAgency
+  const config = samlQ.data ?? null
+  const isConfigured = config !== null
+
+  return (
+    <Card data-testid="saml-config-card">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          SAML SSO
+          {disabled ? (
+            <span
+              className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
+              data-testid="saml-plan-gate"
+            >
+              Agency plan only
+            </span>
+          ) : null}
+        </CardTitle>
+        <CardDescription>
+          Let your team sign in with your identity provider (Okta, Azure AD,
+          OneLogin, ...). Owners can configure the IdP fields below.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {samlQ.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        ) : isConfigured ? (
+          <div className="space-y-2" data-testid="saml-configured">
+            <div className="space-y-1 text-sm">
+              <div>
+                <span className="font-medium">Status:</span>{" "}
+                {config?.enabled ? (
+                  <span className="text-emerald-700 dark:text-emerald-400">
+                    Enabled
+                  </span>
+                ) : (
+                  <span className="text-muted-foreground">Disabled</span>
+                )}
+              </div>
+              <div className="break-all">
+                <span className="font-medium">IdP entity id:</span>{" "}
+                <span className="font-mono text-xs">
+                  {config?.idpEntityId}
+                </span>
+              </div>
+              <div className="break-all">
+                <span className="font-medium">IdP SSO URL:</span>{" "}
+                <span className="font-mono text-xs">{config?.idpSsoUrl}</span>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setDialogOpen(true)}
+                disabled={disabled}
+                data-testid="saml-edit"
+              >
+                Edit
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setConfirmDisconnect(true)}
+                disabled={disabled || disconnectMut.isPending}
+                data-testid="saml-disconnect"
+              >
+                Disconnect
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-2" data-testid="saml-not-configured">
+            <p className="text-sm text-muted-foreground">
+              SSO is not configured.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setDialogOpen(true)}
+              disabled={disabled}
+              data-testid="saml-configure"
+            >
+              Configure SAML
+            </Button>
+          </div>
+        )}
+      </CardContent>
+
+      <SamlConfigDialog
+        tenantId={tenantId}
+        open={dialogOpen}
+        existing={config}
+        onClose={() => setDialogOpen(false)}
+        onSaved={(next) => {
+          queryClient.setQueryData<TenantSamlConfig | null>(
+            ["saml-config", tenantId],
+            next,
+          )
+          setDialogOpen(false)
+        }}
+      />
+
+      <Dialog
+        open={confirmDisconnect}
+        onOpenChange={(next) => {
+          if (!next) setConfirmDisconnect(false)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Disconnect SAML SSO?</DialogTitle>
+            <DialogDescription>
+              Members will no longer be able to sign in with your identity
+              provider. They'll need to use email + password until SSO is
+              reconfigured.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setConfirmDisconnect(false)}
+              disabled={disconnectMut.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="outline"
+              className="border-destructive/40 text-destructive hover:bg-destructive/10"
+              onClick={() => disconnectMut.mutate()}
+              disabled={disconnectMut.isPending}
+              data-testid="saml-confirm-disconnect"
+            >
+              {disconnectMut.isPending ? "Disconnecting..." : "Disconnect"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  )
+}
+
+function SamlConfigDialog({
+  tenantId,
+  open,
+  existing,
+  onClose,
+  onSaved,
+}: {
+  tenantId: string
+  open: boolean
+  existing: TenantSamlConfig | null
+  onClose: () => void
+  onSaved: (next: TenantSamlConfig) => void
+}) {
+  const client = useApiClient()
+  const [idpEntityId, setIdpEntityId] = useState("")
+  const [idpSsoUrl, setIdpSsoUrl] = useState("")
+  const [idpCertX509, setIdpCertX509] = useState("")
+  const [enabled, setEnabled] = useState(true)
+  const [certError, setCertError] = useState<string | null>(null)
+  const [generalError, setGeneralError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  // Sync the form state when the dialog opens (and on existing change so an
+  // edit-then-reopen reflects the latest server snapshot).
+  useEffect(() => {
+    if (!open) return
+    setIdpEntityId(existing?.idpEntityId ?? "")
+    setIdpSsoUrl(existing?.idpSsoUrl ?? "")
+    setIdpCertX509(existing?.idpCertX509 ?? "")
+    setEnabled(existing?.enabled ?? true)
+    setCertError(null)
+    setGeneralError(null)
+    setCopied(false)
+  }, [open, existing])
+
+  const metadataUrl = spMetadataUrl(tenantId)
+
+  const saveMut = useMutation({
+    mutationFn: () =>
+      client.updateSamlConfig(tenantId, {
+        idpEntityId: idpEntityId.trim(),
+        idpSsoUrl: idpSsoUrl.trim(),
+        idpCertX509: idpCertX509.trim(),
+        enabled,
+      }),
+    onSuccess: (next) => {
+      onSaved(next)
+      toast.success("SAML SSO saved")
+    },
+    onError: (e) => {
+      if (isApiError(e) && e.status === 400) {
+        // Surface the BE's bad-cert / bad-input message inline against the
+        // cert field; that's the most common 400 cause for this endpoint.
+        const msg =
+          (typeof e.body === "string" && e.body) ||
+          e.message ||
+          "Invalid configuration"
+        setCertError(msg)
+        return
+      }
+      if (isApiError(e) && e.status === 403) {
+        setGeneralError(
+          "Only owners on the Agency plan can configure SAML SSO.",
+        )
+        return
+      }
+      setGeneralError("Could not save SAML config. Please try again.")
+    },
+  })
+
+  const onSubmit = () => {
+    setGeneralError(null)
+    setCertError(null)
+    if (!idpEntityId.trim() || !idpSsoUrl.trim() || !idpCertX509.trim()) {
+      setGeneralError("All three IdP fields are required.")
+      return
+    }
+    if (!PEM_HINT_RE.test(idpCertX509)) {
+      setCertError(
+        "Cert must be PEM-encoded and include the BEGIN CERTIFICATE header.",
+      )
+      return
+    }
+    saveMut.mutate()
+  }
+
+  const onCopyMetadata = async () => {
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(metadataUrl)
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+        return
+      }
+    } catch {
+      // ignore; fall through to toast
+    }
+    toast.message("Copy the URL manually", { description: metadataUrl })
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose()
+      }}
+    >
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            {existing ? "Edit SAML SSO" : "Configure SAML SSO"}
+          </DialogTitle>
+          <DialogDescription>
+            Wrendex acts as the SAML Service Provider. Send the metadata URL
+            below to your IdP admin, then enter the IdP-side details Wrendex
+            needs to validate sign-in assertions.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Step 1. SP metadata URL</Label>
+            <p className="text-xs text-muted-foreground">
+              Send this to your IdP admin to register Wrendex as a Service
+              Provider.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                readOnly
+                value={metadataUrl}
+                className="font-mono text-xs"
+                data-testid="saml-metadata-url"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onCopyMetadata}
+                data-testid="saml-copy-metadata"
+              >
+                {copied ? "Copied" : "Copy"}
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="saml-idp-entity">Step 2. IdP entity id</Label>
+            <Input
+              id="saml-idp-entity"
+              data-testid="saml-idp-entity"
+              type="text"
+              value={idpEntityId}
+              onChange={(e) => setIdpEntityId(e.target.value)}
+              placeholder="https://idp.example.com/entity"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="saml-idp-sso">IdP SSO URL</Label>
+            <Input
+              id="saml-idp-sso"
+              data-testid="saml-idp-sso"
+              type="text"
+              value={idpSsoUrl}
+              onChange={(e) => setIdpSsoUrl(e.target.value)}
+              placeholder="https://idp.example.com/sso"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="saml-idp-cert">IdP X.509 certificate (PEM)</Label>
+            <Textarea
+              id="saml-idp-cert"
+              data-testid="saml-idp-cert"
+              rows={6}
+              value={idpCertX509}
+              onChange={(e) => {
+                setIdpCertX509(e.target.value)
+                setCertError(null)
+              }}
+              placeholder={
+                "-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----"
+              }
+              className="font-mono text-xs"
+              aria-invalid={certError ? true : undefined}
+            />
+            {certError ? (
+              <p className="text-xs text-destructive" data-testid="saml-cert-error">
+                {certError}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="flex items-center justify-between rounded-md border p-3">
+            <div>
+              <Label htmlFor="saml-enabled" className="text-sm">
+                Enabled
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                When off, members can't sign in with SSO but the config is
+                preserved.
+              </p>
+            </div>
+            <Switch
+              id="saml-enabled"
+              checked={enabled}
+              onCheckedChange={(v) => setEnabled(Boolean(v))}
+              data-testid="saml-enabled"
+            />
+          </div>
+
+          {generalError ? (
+            <Alert variant="destructive">
+              <AlertDescription data-testid="saml-general-error">
+                {generalError}
+              </AlertDescription>
+            </Alert>
+          ) : null}
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={saveMut.isPending}>
+            Cancel
+          </Button>
+          <Button
+            onClick={onSubmit}
+            disabled={saveMut.isPending}
+            data-testid="saml-submit"
+          >
+            {saveMut.isPending ? "Saving..." : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

@@ -95,6 +95,9 @@ import type {
   TenantBranding,
   TenantInvite,
   TenantMember,
+  TenantSamlConfig,
+  UpdateSamlConfigInput,
+  VerifySubdomainResponse,
   TransferOwnershipInput,
   TwoFactorStatus,
   UpdateMemberRoleInput,
@@ -780,6 +783,50 @@ export function createApiClient(opts: CreateApiClientOptions) {
       "PUT",
       `/api/tenants/${tenantId}/branding`,
       { body: input },
+    )
+  }
+
+  /** Trigger a fresh CNAME-resolution check for the tenant's configured
+   *  custom subdomain. The BE re-resolves the customer's DNS record against
+   *  the expected target (wrendex.com) and persists the result back onto
+   *  the TenantBranding row; the FE re-renders from the response so the
+   *  pill flips immediately. AGENCY-only on the BE side; lower tiers 403. */
+  function verifySubdomain(tenantId: string): Promise<VerifySubdomainResponse> {
+    return request<VerifySubdomainResponse>(
+      "POST",
+      `/api/tenants/${tenantId}/branding/verify-subdomain`,
+    )
+  }
+
+  // -------------------------------------------------------------------------
+  // SAML SSO config (P4 iter 4 BE). AGENCY+OWNER-only mutations; reads are
+  // open to all members. The 404 on GET means "never configured" and the
+  // FE surfaces the Configure SAML CTA. The PUT 400s on cert parse failures
+  // and the FE pins that error to the cert textarea inline.
+  // -------------------------------------------------------------------------
+
+  function getSamlConfig(tenantId: string): Promise<TenantSamlConfig> {
+    return request<TenantSamlConfig>(
+      "GET",
+      `/api/tenants/${tenantId}/saml/config`,
+    )
+  }
+
+  function updateSamlConfig(
+    tenantId: string,
+    input: UpdateSamlConfigInput,
+  ): Promise<TenantSamlConfig> {
+    return request<TenantSamlConfig>(
+      "PUT",
+      `/api/tenants/${tenantId}/saml/config`,
+      { body: input },
+    )
+  }
+
+  function deleteSamlConfig(tenantId: string): Promise<undefined> {
+    return request<undefined>(
+      "DELETE",
+      `/api/tenants/${tenantId}/saml/config`,
     )
   }
 
@@ -1547,6 +1594,11 @@ export function createApiClient(opts: CreateApiClientOptions) {
     // tenant branding (white-label, Agency only)
     getBranding,
     updateBranding,
+    verifySubdomain,
+    // SAML SSO (P4 iter 4 BE)
+    getSamlConfig,
+    updateSamlConfig,
+    deleteSamlConfig,
     // alert rules
     listAlertRules,
     updateAlertRule,

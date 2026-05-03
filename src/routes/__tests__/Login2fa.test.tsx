@@ -84,7 +84,7 @@ describe("Login 2FA flow", () => {
     fireEvent.change(screen.getByLabelText("Password"), {
       target: { value: "hunter22" },
     })
-    fireEvent.click(screen.getByRole("button", { name: /sign in/i }))
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }))
 
     // The second-step form renders with a code input.
     await waitFor(() => {
@@ -127,7 +127,7 @@ describe("Login 2FA flow", () => {
     fireEvent.change(screen.getByLabelText("Password"), {
       target: { value: "hunter22" },
     })
-    fireEvent.click(screen.getByRole("button", { name: /sign in/i }))
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }))
 
     await waitFor(() => {
       expect(screen.getByTestId("two-factor-form")).toBeTruthy()
@@ -162,7 +162,7 @@ describe("Login 2FA flow", () => {
     fireEvent.change(screen.getByLabelText("Password"), {
       target: { value: "hunter22" },
     })
-    fireEvent.click(screen.getByRole("button", { name: /sign in/i }))
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }))
 
     await waitFor(() => {
       expect(screen.getByTestId("two-factor-form")).toBeTruthy()

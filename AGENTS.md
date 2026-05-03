@@ -298,6 +298,48 @@ link. PDF endpoints are dedicated (no JSON form to content-negotiate
 against), so URL construction lives in the consumer (next to the
 report's CSV path) rather than in the typed client.
 
+## Custom subdomain + SAML SSO (P4 iter 4)
+
+- **Custom subdomain (Settings -> Tenant -> Custom subdomain).** AGENCY-only.
+  Adds a `customSubdomain` field to `UpdateTenantBrandingInput`; non-AGENCY
+  tenants see the form disabled with the same Agency plan only badge as
+  the branding card. `verifySubdomain(tenantId)` POSTs to
+  `/api/tenants/{tenantId}/branding/verify-subdomain` and re-resolves the
+  customer's CNAME; the response merges back onto the cached
+  `TenantBranding` row so the verification pill flips immediately. Pill
+  states: "Not verified" (verifiedAt null) -> "Verified" (verifiedAt set
+  AND lastDnsCheckResult=="ok") -> "Issue: <result>" (otherwise). Scope is
+  intentionally CNAME-pointer only; TLS cert provisioning + reverse-proxy
+  routing for the subdomain is Phase 5+ infra work.
+
+- **SAML SSO config (Settings -> Tenant -> SAML SSO).** AGENCY-only on the
+  BE; PUT also requires OWNER. The card surfaces three states:
+  unconfigured (404 from getSamlConfig -> "SSO is not configured." +
+  Configure SAML CTA), configured (200 -> summary + Edit / Disconnect),
+  and plan-gated (badge + disabled). The Configure SAML dialog is a
+  single form with two visual sections: Step 1 surfaces the SP metadata
+  URL (`/api/saml/sp/metadata?tenantId=<active>`) with a copy button so
+  the customer's IdP admin can register Wrendex as a Service Provider;
+  Step 2 collects the three IdP-side fields (entityId, ssoUrl, X.509 PEM
+  cert). 400 on submit pins the BE message to the cert textarea inline.
+  Disconnect routes through a confirmation dialog and DELETEs the config.
+
+- **Sign in with SSO (Login).** A "Sign in with SSO" button below the
+  password form opens a small dialog asking for the workspace id or URL.
+  Submit hard-navigates the browser to
+  `GET /api/saml/sp/{tenantId}/login?returnTo=<origin>/`. The IdP redirect
+  chain returns to the dashboard root with `#sessionToken=...` in the URL
+  fragment; `AuthProvider`'s bootstrap effect plucks the token, persists
+  it via `writeStoredToken`, strips the fragment with
+  `history.replaceState`, then runs the normal `/api/me` hydration so
+  `RequireAuth` routes the user into the resolved tenant. New helpers in
+  `src/lib/sso.ts`: `ssoLoginUrl(tenantId, returnTo)` and
+  `spMetadataUrl(tenantId)`. New typed-client methods: `verifySubdomain`,
+  `getSamlConfig`, `updateSamlConfig`, `deleteSamlConfig`. New types:
+  `TenantSamlConfig`, `UpdateSamlConfigInput`, `VerifySubdomainResponse`;
+  `TenantBranding` gains `customSubdomain`, `customSubdomainVerifiedAt`,
+  `lastDnsCheckAt`, `lastDnsCheckResult`.
+
 ## White-label branding flow (sec 12.3)
 
 Per-tenant branding (logo, accent colour, "from name", hide

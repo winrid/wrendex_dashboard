@@ -45,10 +45,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Toaster } from "@/components/ui/sonner"
+import { ssoLoginUrl } from "@/lib/sso"
 
 const schema = z.object({
   email: z.string().email("Enter a valid email"),
@@ -112,6 +121,15 @@ export function Login() {
   const [twoFactorCode, setTwoFactorCode] = useState("")
   const [twoFactorError, setTwoFactorError] = useState<string | null>(null)
   const [twoFactorSubmitting, setTwoFactorSubmitting] = useState(false)
+
+  // SAML SSO modal state (P4 iter 4 FE-D). Click "Sign in with SSO" -> a
+  // small dialog asks for the tenant id / workspace URL; on submit we
+  // hard-navigate to the SP-initiated login endpoint. The IdP redirect
+  // chain returns the browser to the dashboard root with #sessionToken=...,
+  // which AuthProvider's bootstrap effect picks up.
+  const [ssoOpen, setSsoOpen] = useState(false)
+  const [ssoWorkspace, setSsoWorkspace] = useState("")
+  const [ssoError, setSsoError] = useState<string | null>(null)
 
   const {
     register,
@@ -184,6 +202,48 @@ export function Login() {
       }
     }
   })
+
+  // Parse the user-supplied workspace identifier into a tenant id. We
+  // accept either a bare slug ("acme") or a workspace URL
+  // ("https://acme.wrendex.com" / "https://audits.acme.com"). For the URL
+  // case we treat the leading hostname label as the slug; the BE looks up
+  // both by tenant id and slug so a slug works as a tenant id for the SP
+  // login route.
+  function parseWorkspace(raw: string): string | null {
+    const trimmed = raw.trim()
+    if (!trimmed) return null
+    // URL form
+    if (/^https?:\/\//i.test(trimmed)) {
+      try {
+        const u = new URL(trimmed)
+        const host = u.hostname
+        const firstLabel = host.split(".")[0]
+        if (firstLabel && firstLabel.length > 0) return firstLabel
+        return null
+      } catch {
+        return null
+      }
+    }
+    // Slug / tenant id form: keep alnum + dashes / underscores.
+    if (!/^[A-Za-z0-9._-]+$/.test(trimmed)) return null
+    return trimmed
+  }
+
+  const submitSso = () => {
+    setSsoError(null)
+    const tenantId = parseWorkspace(ssoWorkspace)
+    if (!tenantId) {
+      setSsoError("Enter a workspace id or URL (e.g. acme).")
+      return
+    }
+    const returnTo =
+      typeof window !== "undefined"
+        ? `${window.location.origin}/`
+        : "/"
+    if (typeof window !== "undefined") {
+      window.location.href = ssoLoginUrl(tenantId, returnTo)
+    }
+  }
 
   const submitTwoFactor = async () => {
     if (!pendingToken) return
@@ -350,6 +410,18 @@ export function Login() {
               <Button type="submit" className="w-full" disabled={isSubmitting}>
                 {isSubmitting ? "Signing in..." : "Sign in"}
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  setSsoError(null)
+                  setSsoOpen(true)
+                }}
+                data-testid="sso-open"
+              >
+                Sign in with SSO
+              </Button>
               <p className="text-center text-xs text-muted-foreground">
                 Don&apos;t have an account?{" "}
                 <Link to="/signup" className="underline hover:text-foreground">
@@ -360,6 +432,70 @@ export function Login() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={ssoOpen}
+        onOpenChange={(next) => {
+          setSsoOpen(next)
+          if (!next) {
+            setSsoError(null)
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Sign in with SSO</DialogTitle>
+            <DialogDescription>
+              Enter your workspace id or URL. We'll redirect you to your
+              identity provider to complete sign-in.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault()
+              submitSso()
+            }}
+          >
+            <div className="space-y-1.5">
+              <Label htmlFor="sso-workspace">Workspace</Label>
+              <Input
+                id="sso-workspace"
+                data-testid="sso-workspace"
+                type="text"
+                autoFocus
+                placeholder="acme or https://audits.acme.com"
+                value={ssoWorkspace}
+                onChange={(e) => {
+                  setSsoWorkspace(e.target.value)
+                  setSsoError(null)
+                }}
+                aria-invalid={ssoError ? true : undefined}
+              />
+              {ssoError ? (
+                <p
+                  className="text-xs text-destructive"
+                  data-testid="sso-error"
+                >
+                  {ssoError}
+                </p>
+              ) : null}
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setSsoOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" data-testid="sso-submit">
+                Continue
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
