@@ -84,7 +84,7 @@ describe("StructuredDataReport", () => {
       totalScripts: 2,
       typeCounts: { Organization: 1, Article: 1 },
     }
-    const errorAlert: Alert = {
+    const errorAlert = {
       id: "a_1",
       pageId: "p_1",
       siteId: "s_1",
@@ -95,7 +95,7 @@ describe("StructuredDataReport", () => {
       message: "Could not parse JSON-LD",
       createdAt: "2026-04-30T00:00:00Z",
       status: "OPEN",
-    }
+    } as unknown as Alert
     const alerts: AlertQueryResult = {
       items: [errorAlert],
       total: 1,

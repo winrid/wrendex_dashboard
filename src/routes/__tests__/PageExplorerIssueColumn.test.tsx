@@ -42,7 +42,7 @@ function makeRow(overrides: Partial<PageRow>): PageRow {
     ogImage: null,
     ogUrl: null,
     twitterCard: null,
-    xRobotsTag: null,
+    xrobotsTag: null,
     fromPageId: null,
     outgoingLinks: null,
     redirectChain: null,
@@ -60,7 +60,7 @@ function makeRow(overrides: Partial<PageRow>): PageRow {
     noticeCount: 0,
     indexable: true,
     ...overrides,
-  }
+  } as unknown as PageRow
 }
 
 function makeResult(rows: PageRow[]): PageResult {

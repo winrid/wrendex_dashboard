@@ -66,7 +66,7 @@ function makeSite(id: string, url: string): Site {
     tenantId: "t_1",
     url,
     createdAt: "2026-04-30T00:00:00Z",
-  }
+  } as unknown as Site
 }
 
 function renderRoute() {

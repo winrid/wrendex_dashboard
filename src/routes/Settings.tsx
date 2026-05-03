@@ -2109,7 +2109,9 @@ export function EmailChannelCard({ tenantId }: { tenantId: string }) {
   // Sync server snapshot -> local state on first load / refetch.
   useEffect(() => {
     if (!channelQ.data) return
-    setKind(channelQ.data.kind)
+    // BE EmailChannel.kind is a free-form String at the model level; the FE
+    // narrows it to the three shipped values via the EmailChannelKind union.
+    setKind(channelQ.data.kind as EmailChannelKind)
     setRecipients(channelQ.data.recipients ?? [])
   }, [channelQ.data])
 

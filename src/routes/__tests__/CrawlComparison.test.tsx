@@ -40,7 +40,7 @@ function makeRun(id: string, score: number): CrawlRun {
     errorCount: 5,
     warningCount: 2,
     noticeCount: 1,
-  }
+  } as unknown as CrawlRun
 }
 
 function makeAlert(id: string, type: string): Alert {
@@ -60,7 +60,7 @@ function makeAlert(id: string, type: string): Alert {
     resolvedAt: null,
     expiresAt: null,
     affectedUrls: null,
-  }
+  } as unknown as Alert
 }
 
 function makeSummary(): IssuesSummary {

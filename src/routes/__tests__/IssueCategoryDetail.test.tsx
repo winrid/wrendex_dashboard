@@ -70,7 +70,7 @@ describe("IssueCategoryDetail", () => {
       ],
     }
     getIssuesSummary.mockResolvedValue(summary)
-    const result: AlertQueryResult = {
+    const result = {
       items: [
         {
           id: "a_1",
@@ -111,7 +111,7 @@ describe("IssueCategoryDetail", () => {
       total: 2,
       page: 0,
       size: 50,
-    }
+    } as unknown as AlertQueryResult
     listCrawlAlerts.mockResolvedValue(result)
 
     renderRoute()

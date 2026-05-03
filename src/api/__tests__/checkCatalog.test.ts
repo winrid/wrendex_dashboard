@@ -1,16 +1,17 @@
 // Integrity test for the static check catalog. The catalog must contain
-// exactly one entry per AlertType union literal in src/api/types.ts; if the
-// backend ships a new AlertType, this test fails until the catalog is
-// extended. Mirrors AGENTS.md "Repo layout" - the catalog is the single
-// source of truth for description / how-to-fix / category.
+// exactly one entry per AlertType union literal; if the backend ships a new
+// AlertType, this test fails until the catalog is extended. Mirrors
+// AGENTS.md "Repo layout" - the catalog is the single source of truth for
+// description / how-to-fix / category.
 //
-// We extract the literal list out of types.ts at build time using Vite's
-// `?raw` query (Vitest supports the same query). Going through ?raw avoids
-// having to depend on @types/node in the app tsconfig just for one test.
+// AlertType lives in src/api/generated/wrendex-models.ts now; the typescript-
+// generator-maven-plugin emits it on every BE codegen run, and types.ts re-
+// exports it from there. We scrape the generated file (single-line union)
+// rather than the re-export so the literal extraction stays trivial.
 
 import { describe, expect, it } from "vitest"
 // eslint-disable-next-line import/no-unresolved
-import typesSource from "../types.ts?raw"
+import generatedSource from "../generated/wrendex-models.ts?raw"
 import {
   getAllCategories,
   getAllChecks,
@@ -19,14 +20,21 @@ import {
 } from "../checkCatalog"
 
 function extractAlertTypeLiterals(): string[] {
-  const start = typesSource.indexOf("export type AlertType")
-  if (start < 0) throw new Error("AlertType export not found in types.ts")
-  const after = typesSource.slice(start)
-  // Stop once we hit a blank line; the union ends there.
-  const stopIdx = after.search(/\n\n/)
-  const region = stopIdx > 0 ? after.slice(0, stopIdx) : after
+  // The generator emits AlertType as a single-line `export type AlertType =
+  // "A" | "B" | ...;` definition. Grab everything between the `=` and the
+  // closing semicolon, then pull out the quoted literals.
+  const start = generatedSource.indexOf("export type AlertType")
+  if (start < 0) {
+    throw new Error("AlertType export not found in generated/wrendex-models.ts")
+  }
+  const eq = generatedSource.indexOf("=", start)
+  const semi = generatedSource.indexOf(";", eq)
+  if (eq < 0 || semi < 0) {
+    throw new Error("Could not locate AlertType union body in generated file")
+  }
+  const region = generatedSource.slice(eq, semi)
   const literals: string[] = []
-  const re = /^\s*\|\s*"([A-Z0-9_]+)"$/gm
+  const re = /"([A-Z0-9_]+)"/g
   let match: RegExpExecArray | null
   while ((match = re.exec(region)) !== null) {
     literals.push(match[1]!)

@@ -12,6 +12,11 @@ import {
   type AlertsTableToolbarState,
 } from "../AlertsTable"
 
+// Test fixture. Unset fields are returned as null on the wire (Jackson
+// emits null for unset Instants / String fields), but the generated Alert
+// interface declares those fields as required strings. We cast through
+// unknown to keep the fixture honest about wire-shape nulls without forcing
+// every test to enumerate every Alert field.
 function makeAlert(overrides: Partial<Alert> = {}): Alert {
   return {
     id: "a_1",
@@ -30,7 +35,7 @@ function makeAlert(overrides: Partial<Alert> = {}): Alert {
     expiresAt: null,
     affectedUrls: ["https://acme.example/about"],
     ...overrides,
-  }
+  } as unknown as Alert
 }
 
 const TOOLBAR: AlertsTableToolbarState = {

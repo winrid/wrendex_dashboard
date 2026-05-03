@@ -38,7 +38,7 @@ function makeAlert(id: string): Alert {
     resolvedAt: null,
     expiresAt: null,
     affectedUrls: null,
-  }
+  } as unknown as Alert
 }
 
 function renderStrip(previousCrawlId: string | null) {

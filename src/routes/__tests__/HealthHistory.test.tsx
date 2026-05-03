@@ -97,7 +97,7 @@ function makeSite(): Site {
     url: "https://acme.example",
     createdAt: "2026-04-01T00:00:00Z",
     lastCrawlAt: "2026-04-30T00:00:00Z",
-  }
+  } as unknown as Site
 }
 
 function renderRoute() {

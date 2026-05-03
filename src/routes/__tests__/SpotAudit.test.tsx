@@ -25,13 +25,13 @@ vi.mock("@/api/useApiClient", () => ({
 
 import { SpotAudit, partitionUrls } from "../SpotAudit"
 
-const SITE: Site = {
+const SITE = {
   id: "s_1",
   tenantId: "t_1",
   url: "https://acme.example",
   createdAt: "2026-04-30T00:00:00Z",
   lastCrawlAt: null,
-}
+} as unknown as Site
 
 function renderRoute() {
   const qc = new QueryClient({

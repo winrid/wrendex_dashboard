@@ -62,7 +62,7 @@ describe("SharedView", () => {
   })
 
   it("renders the read-only SITE overview WITHOUT a Run audit button", async () => {
-    const result: SharedLinkResult = {
+    const result = {
       share: {
         scope: "SITE",
         tenantName: "Acme Corp",
@@ -117,7 +117,7 @@ describe("SharedView", () => {
           ],
         },
       },
-    }
+    } as unknown as SharedLinkResult
     resolveSharedLink.mockResolvedValue(result)
 
     renderRoute()

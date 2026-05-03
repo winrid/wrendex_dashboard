@@ -56,7 +56,7 @@ function makePage(): Page {
     ogImage: null,
     ogUrl: null,
     twitterCard: null,
-    xRobotsTag: null,
+    xrobotsTag: null,
     fromPageId: null,
     outgoingLinks: [
       {
@@ -84,7 +84,12 @@ function makePage(): Page {
     jsonLdScripts: null,
     crawledAt: "2026-04-30T00:00:00Z",
     ampPage: false,
-  }
+    // Cast through unknown: the fixture intentionally sets some wire-
+    // nullable fields (ogTitle, redirectChain, etc.) to null to match what
+    // the BE actually emits when they are unset, but the generated Page
+    // type widens those as required. The cast keeps the fixture honest
+    // about wire shape without forcing the test to populate every field.
+  } as unknown as Page
 }
 
 function emptyAlerts(): AlertQueryResult {

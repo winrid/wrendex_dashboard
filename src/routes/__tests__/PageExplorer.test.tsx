@@ -52,7 +52,7 @@ function makePage(
     ogImage: null,
     ogUrl: null,
     twitterCard: null,
-    xRobotsTag: null,
+    xrobotsTag: null,
     fromPageId: null,
     outgoingLinks: null,
     redirectChain: null,
@@ -70,7 +70,7 @@ function makePage(
     noticeCount: 0,
     indexable: true,
     ...overrides,
-  }
+  } as unknown as PageRow
 }
 
 function makeResult(pages: PageRow[]): PageResult {
