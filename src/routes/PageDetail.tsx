@@ -201,7 +201,12 @@ export function PageDetail() {
           />
         </TabsContent>
         <TabsContent value="structured" className="mt-4">
-          <StructuredDataTab page={page} />
+          <StructuredDataTab
+            page={page}
+            tenantId={tenantId}
+            siteId={siteId}
+            crawlId={resolvedCrawlId}
+          />
         </TabsContent>
         <TabsContent value="hreflang" className="mt-4">
           <HreflangTab page={page} />
@@ -543,12 +548,36 @@ function SiblingHint({
 // Structured data
 // ---------------------------------------------------------------------------
 
-function StructuredDataTab({ page }: { page: Page }) {
+function StructuredDataTab({
+  page,
+  tenantId,
+  siteId,
+  crawlId,
+}: {
+  page: Page
+  tenantId: string
+  siteId: string
+  crawlId: string | null
+}) {
   const scripts = page.jsonLdScripts ?? []
+  const reportLink = crawlId ? (
+    <div className="text-xs">
+      <Link
+        to={`/t/${tenantId}/sites/${siteId}/crawls/${crawlId}/structured-data`}
+        className="text-primary hover:underline"
+      >
+        Open the full Structured Data report for this crawl
+      </Link>
+    </div>
+  ) : null
+
   if (scripts.length === 0) {
     return (
-      <div className="rounded-md border bg-card p-6 text-sm text-muted-foreground">
-        No JSON-LD blocks found on this page.
+      <div className="space-y-3">
+        <div className="rounded-md border bg-card p-6 text-sm text-muted-foreground">
+          No JSON-LD blocks found on this page.
+        </div>
+        {reportLink}
       </div>
     )
   }
@@ -564,6 +593,7 @@ function StructuredDataTab({ page }: { page: Page }) {
           </pre>
         </div>
       ))}
+      {reportLink}
     </div>
   )
 }

@@ -450,11 +450,16 @@ export type RedirectsResult = {
   totalLoops: number
 }
 
+/** Mirrors com.bigbug.report.DuplicateGroup. The BE emits one of:
+ *  - field="content" + hash=<contentHash> + value=null  (body duplicates)
+ *  - field="title"|"metaDescription"|"h1" + hash=null + value=<the dup string>
+ *  Both `hash` and `value` are nullable on the wire; only one is set per
+ *  group. */
 export type DuplicateGroup = {
-  hash: string
+  hash: string | null
   urls: string[]
   field: string
-  value: string
+  value: string | null
 }
 
 export type DuplicatesResult = {

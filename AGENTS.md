@@ -131,6 +131,21 @@ external component libraries.
   Server-paginated grid over `exploreLinks`; type filter is server-side,
   rel + URL search are client-side filters on the loaded page; row click
   opens a popover with full anchor text + rel string + canonical target.
+- `/t/:tenantId/sites/:siteId/crawls/:crawlId/structure` - StructureMap
+  (R.04). Reads `getStructure`; renders a hand-rolled directory tree
+  built client-side from the BE's flat DirectoryNode list, plus an
+  Orphan-pages section sourced from `listCrawlAlerts(type=ORPHAN_PAGE)`.
+- `/t/:tenantId/sites/:siteId/crawls/:crawlId/duplicates` - DuplicatesReport
+  (R.06). Reads `getDuplicates`; three shadcn Tabs (Title / Description /
+  Body) filter the loaded `DuplicateGroup[]` by `field` client-side.
+  H1 duplicates from BE are intentionally not surfaced (out of plan
+  scope for this iteration).
+- `/t/:tenantId/sites/:siteId/crawls/:crawlId/structured-data` -
+  StructuredDataReport (R.07). Reads `getStructuredData` plus a single
+  batched `listCrawlAlerts(crawlId, size=500)` to merge JSON_LD_* and
+  JSON_LD_GOOGLE_* alerts onto the per-page entries. Raw JSON-LD is
+  fetched lazily via `getPageByUrl` on expand. Filter bar: All / With
+  errors / Google-eligible only.
 - `/t/:tenantId/sites/:siteId/settings` - SiteSettings (iter 6 FE-7).
   Schedule editor (cadence Select; disabled if unverified, with a link
   to the existing VerificationDialog), 3 canned alert rules with

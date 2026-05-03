@@ -233,6 +233,31 @@ export function SiteDetail() {
               Health history
             </Link>
           </Button>
+          {latestCrawlId ? (
+            <>
+              <Button asChild variant="outline" size="sm">
+                <Link
+                  to={`/t/${tenantId}/sites/${siteId}/crawls/${latestCrawlId}/structure`}
+                >
+                  Site structure
+                </Link>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <Link
+                  to={`/t/${tenantId}/sites/${siteId}/crawls/${latestCrawlId}/duplicates`}
+                >
+                  Duplicates
+                </Link>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <Link
+                  to={`/t/${tenantId}/sites/${siteId}/crawls/${latestCrawlId}/structured-data`}
+                >
+                  Structured data
+                </Link>
+              </Button>
+            </>
+          ) : null}
           <Button asChild variant="outline" size="sm">
             <Link to={`/t/${tenantId}/sites/${siteId}/settings`}>
               Settings

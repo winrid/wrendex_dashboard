@@ -13,6 +13,9 @@ import { PageExplorer } from "@/routes/PageExplorer"
 import { PageDetail } from "@/routes/PageDetail"
 import { RedirectsReport } from "@/routes/RedirectsReport"
 import { ResourcesReport } from "@/routes/ResourcesReport"
+import { StructureMap } from "@/routes/StructureMap"
+import { DuplicatesReport } from "@/routes/DuplicatesReport"
+import { StructuredDataReport } from "@/routes/StructuredDataReport"
 import { SiteInbox } from "@/routes/SiteInbox"
 import { Inbox } from "@/routes/Inbox"
 import { Reports } from "@/routes/Reports"
@@ -89,6 +92,18 @@ export const router = createBrowserRouter([
       {
         path: "sites/:siteId/crawls/:crawlId/resources",
         element: <ResourcesReport />,
+      },
+      {
+        path: "sites/:siteId/crawls/:crawlId/structure",
+        element: <StructureMap />,
+      },
+      {
+        path: "sites/:siteId/crawls/:crawlId/duplicates",
+        element: <DuplicatesReport />,
+      },
+      {
+        path: "sites/:siteId/crawls/:crawlId/structured-data",
+        element: <StructuredDataReport />,
       },
       {
         path: "crawls/:crawlId/issues/category/:categoryId",
