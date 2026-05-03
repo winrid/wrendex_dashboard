@@ -88,6 +88,10 @@ export type AuthContextValue = {
   login: (input: AuthLoginRequest) => Promise<Me>
   logout: () => void
   setActiveTenant: (tenantId: string) => void
+  /** Re-fetches /api/me and re-seeds {user, memberships, activeTenantId}.
+   *  Call after server-side mutations that change membership (e.g. accepting
+   *  an invite) so RequireAuth sees the new tenant before navigation. */
+  refresh: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -279,6 +283,22 @@ export function AuthProvider({ children, skipBootstrap = false }: AuthProviderPr
     setActiveTenantIdState(tenantId)
   }, [])
 
+  const refresh = useCallback(async () => {
+    // Re-fetch /api/me. Used after mutations that change membership (e.g.
+    // accept-invite) so RequireAuth doesn't bounce the user before the
+    // freshly-joined tenant lands in state. 401 here means the session is
+    // stale; clear it so the app routes back to the login screen.
+    try {
+      const me = await client.getMe()
+      applyMe(me)
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        clearSession()
+      }
+      throw e
+    }
+  }, [applyMe, clearSession, client])
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -292,6 +312,7 @@ export function AuthProvider({ children, skipBootstrap = false }: AuthProviderPr
       login,
       logout,
       setActiveTenant,
+      refresh,
     }),
     [
       user,
@@ -304,6 +325,7 @@ export function AuthProvider({ children, skipBootstrap = false }: AuthProviderPr
       login,
       logout,
       setActiveTenant,
+      refresh,
     ],
   )
 

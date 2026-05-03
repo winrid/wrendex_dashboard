@@ -2,8 +2,9 @@
 // query params + appends format=csv, and that downloadCsv pipes the blob
 // through a temporary anchor.
 
-import { describe, expect, it, vi } from "vitest"
-import { csvUrl, downloadCsv } from "../download"
+import { afterEach, describe, expect, it, vi } from "vitest"
+import { csvUrl, downloadCsv, downloadPdf } from "../download"
+import { __resetApiClientForTests, setAuthToken } from "@/api/useApiClient"
 
 describe("csvUrl", () => {
   it("appends format=csv and preserves provided params", () => {
@@ -85,5 +86,52 @@ describe("downloadCsv", () => {
     await expect(
       downloadCsv("http://localhost:7070/api/foo", "foo.csv", { fetchImpl }),
     ).rejects.toThrow(/Download failed/)
+  })
+})
+
+describe("downloadPdf", () => {
+  afterEach(() => {
+    __resetApiClientForTests()
+  })
+
+  it("attaches the bearer token from the auth-token store", async () => {
+    setAuthToken("test-bearer-token")
+    const blob = new Blob(["%PDF-1.4"], { type: "application/pdf" })
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      blob: async () => blob,
+    } as unknown as Response)
+
+    await downloadPdf(
+      "http://localhost:7070/api/crawls/c_1/pages/pdf",
+      "pages.pdf",
+      { fetchImpl, windowImpl: undefined },
+    )
+
+    expect(fetchImpl).toHaveBeenCalledOnce()
+    const [, init] = fetchImpl.mock.calls[0]!
+    const headers = (init as RequestInit).headers as Record<string, string>
+    expect(headers.Authorization).toBe("Bearer test-bearer-token")
+    expect(headers.Accept).toBe("application/pdf")
+  })
+
+  it("omits the Authorization header when no token is set", async () => {
+    setAuthToken(null)
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      blob: async () => new Blob(),
+    } as unknown as Response)
+
+    await downloadPdf(
+      "http://localhost:7070/api/crawls/c_1/pages/pdf",
+      "pages.pdf",
+      { fetchImpl, windowImpl: undefined },
+    )
+
+    const [, init] = fetchImpl.mock.calls[0]!
+    const headers = (init as RequestInit).headers as Record<string, string>
+    expect(headers.Authorization).toBeUndefined()
   })
 })

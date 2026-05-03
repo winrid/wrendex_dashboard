@@ -35,7 +35,10 @@ type AuthShape = {
   isLoading: boolean
   logout: () => void
   setActiveTenant: (id: string) => void
+  refresh: () => Promise<void>
 }
+
+const refreshMock = vi.fn(async () => {})
 
 let authState: AuthShape = {
   user: null,
@@ -45,6 +48,7 @@ let authState: AuthShape = {
   isLoading: false,
   logout: () => {},
   setActiveTenant: () => {},
+  refresh: refreshMock,
 }
 
 vi.mock("@/auth/AuthProvider", () => ({
@@ -88,6 +92,8 @@ const PUBLIC_INVITE = {
 
 describe("AcceptInvite", () => {
   beforeEach(() => {
+    refreshMock.mockClear()
+    refreshMock.mockImplementation(async () => {})
     authState = {
       user: null,
       memberships: [],
@@ -96,6 +102,7 @@ describe("AcceptInvite", () => {
       isLoading: false,
       logout: () => {},
       setActiveTenant: () => {},
+      refresh: refreshMock,
     }
   })
   afterEach(() => {
@@ -173,5 +180,50 @@ describe("AcceptInvite", () => {
       expect(acceptInvite).toHaveBeenCalledTimes(1)
     })
     expect(acceptInvite.mock.calls[0][0]).toBe("tok_abc")
+  })
+
+  it("refreshes the auth session BEFORE navigating into the tenant", async () => {
+    getPublicInvite.mockResolvedValue(PUBLIC_INVITE)
+    acceptInvite.mockResolvedValue({ tenantId: "t_2", role: "EDITOR" })
+
+    // Block refresh on a deferred promise so we can observe ordering: while
+    // refresh is pending the route should NOT have rendered the destination
+    // route, and once we resolve refresh the navigation should land.
+    let resolveRefresh: () => void = () => {}
+    const refreshGate = new Promise<void>((r) => {
+      resolveRefresh = r
+    })
+    refreshMock.mockImplementation(async () => {
+      await refreshGate
+    })
+
+    authState = {
+      ...authState,
+      isAuthed: true,
+      user: {
+        id: "u_invitee",
+        email: "invitee@example.com",
+        createdAt: "2026-04-01T00:00:00Z",
+      },
+      refresh: refreshMock,
+    }
+    renderRoute()
+    const btn = await screen.findByTestId("invite-accept-button")
+    fireEvent.click(btn)
+
+    // acceptInvite resolves; refresh is pending; navigation has NOT happened.
+    await waitFor(() => {
+      expect(acceptInvite).toHaveBeenCalledTimes(1)
+    })
+    await waitFor(() => {
+      expect(refreshMock).toHaveBeenCalledTimes(1)
+    })
+    expect(screen.queryByTestId("landed-on-sites")).toBeNull()
+
+    // Let refresh resolve; THEN navigation lands.
+    resolveRefresh()
+    await waitFor(() => {
+      expect(screen.getByTestId("landed-on-sites")).toBeTruthy()
+    })
   })
 })

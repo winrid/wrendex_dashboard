@@ -68,6 +68,7 @@ describe("SharedView", () => {
         tenantName: "Acme Corp",
         siteDisplayName: "acme.example",
         expiresAt: null,
+        hidePoweredBy: false,
       },
       payload: {
         site: {

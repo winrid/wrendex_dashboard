@@ -71,8 +71,18 @@ export function AcceptInvite() {
 
   const acceptMut = useMutation({
     mutationFn: () => client.acceptInvite(token),
-    onSuccess: (resp) => {
+    onSuccess: async (resp) => {
       toast.success("Invitation accepted")
+      // Re-fetch /api/me BEFORE we route into the tenant. Without this,
+      // RequireAuth reads memberships from useAuth() before the freshly-
+      // accepted membership has landed and bounces the user back to /login.
+      try {
+        await auth.refresh()
+      } catch {
+        // refresh() already logged out the user on 401; for any other
+        // failure we still attempt to navigate - the next authenticated
+        // call inside the tenant will retry membership hydration.
+      }
       navigate(`/t/${resp.tenantId}/sites`, { replace: true })
     },
     onError: (e) => {

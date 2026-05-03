@@ -881,8 +881,8 @@ export type TelemetryEvent = {
 }
 
 // ---------------------------------------------------------------------------
-// Account (plan section 14.1). Password change endpoint is not yet wired on
-// the BE; the typed client method throws a NotImplemented error.
+// Account (plan section 14.1). Body for POST /api/account/password; consumed
+// by the Account settings page's change-password form.
 // ---------------------------------------------------------------------------
 
 export type ChangePasswordInput = {
@@ -891,10 +891,10 @@ export type ChangePasswordInput = {
 }
 
 // ---------------------------------------------------------------------------
-// Stripe SetupIntent (plan section 1.2 step 3). Phase 1.5 deferral - the BE
-// endpoint is not wired yet, so the typed client method returns null and
-// console.warns. Type left in place so the FE can wire it up unchanged once
-// the BE ships.
+// Stripe SetupIntent (plan section 1.2 step 3). Returned by
+// createSetupIntent(tenantId); the Billing page hands clientSecret to the
+// Stripe Elements payment form so a card can be saved without an immediate
+// charge.
 // ---------------------------------------------------------------------------
 
 export type SetupIntent = {
@@ -1274,7 +1274,6 @@ export type AuditAction =
   | "MEMBER_ROLE_CHANGED"
   | "MEMBER_REMOVED"
   | "OWNERSHIP_TRANSFERRED"
-  | "TENANT_UPDATED"
   | "SITE_CREATED"
   | "SITE_DELETED"
   | string
@@ -1411,13 +1410,15 @@ export type SharedLinkInfo = {
   /** Hostname / display name of the site the share targets, used in the
    *  banner subtitle so recipients see which site they're looking at. */
   siteDisplayName?: string | null
-  /** Optional white-label branding lifted from the tenant (plan section
-   *  12.3). When the BE-C agent has not extended the resolve payload yet
-   *  these will be null/undefined and the shared view falls back to the
-   *  default Wrendex branding. */
+  /** White-label branding lifted from the tenant (plan section 12.3). The
+   *  BE inlines the active tenant's logo + accent on every resolve so the
+   *  shared view paints under the tenant's brand without an extra round-
+   *  trip. logoDataUrl and accentColor are null when the tenant has not
+   *  uploaded a logo / picked an accent. hidePoweredBy mirrors the
+   *  per-plan toggle (Agency-only). */
   logoDataUrl?: string | null
   accentColor?: string | null
-  hidePoweredBy?: boolean | null
+  hidePoweredBy: boolean
 }
 
 /** Payload bag the read-only screens render against. The set of populated

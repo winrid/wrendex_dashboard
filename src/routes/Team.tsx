@@ -27,7 +27,6 @@ import {
   UserMinusIcon,
 } from "lucide-react"
 import { toast } from "sonner"
-import { isApiError } from "@/api/client"
 import { useApiClient } from "@/api/useApiClient"
 import { useAuth } from "@/auth/AuthProvider"
 import type {
@@ -480,19 +479,16 @@ function InvitesTab({
     mutationFn: (inviteId: string) => client.resendInvite(tenantId, inviteId),
     onSuccess: () => {
       toast.success("Invitation re-sent")
+      // The BE re-enqueues the email AND emits an INVITE_RESENT audit row;
+      // refresh both surfaces so the user sees the new event immediately.
       void queryClient.invalidateQueries({
         queryKey: ["tenant-invites", tenantId],
       })
+      void queryClient.invalidateQueries({
+        queryKey: ["tenant-audit-log", tenantId],
+      })
     },
-    onError: (e) => {
-      // Resend is documented in AGENTS.md as optional on the BE; degrade
-      // gracefully when it 404s rather than blowing up.
-      if (isApiError(e) && e.status === 404) {
-        toast.error("Resending invites is not supported on this server.")
-        return
-      }
-      toast.error("Could not resend invitation")
-    },
+    onError: () => toast.error("Could not resend invitation"),
   })
 
   const revokeMut = useMutation({
@@ -627,7 +623,6 @@ const AUDIT_ACTIONS: AuditAction[] = [
   "MEMBER_ROLE_CHANGED",
   "MEMBER_REMOVED",
   "OWNERSHIP_TRANSFERRED",
-  "TENANT_UPDATED",
   "SITE_CREATED",
   "SITE_DELETED",
 ]

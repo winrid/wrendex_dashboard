@@ -1021,9 +1021,8 @@ export function createApiClient(opts: CreateApiClientOptions) {
   }
 
   /** POST /api/tenants/{tenantId}/invites/{inviteId}/resend. Re-enqueues the
-   *  invitation email; the BE returns the (still-same) invite row. If the BE
-   *  has not shipped this endpoint yet the call surfaces as a 404 ApiError;
-   *  the FE catches that and renders a soft-fail toast. */
+   *  invitation email and emits an INVITE_RESENT audit-log entry; the BE
+   *  returns the (still-same) invite row. */
   function resendInvite(
     tenantId: string,
     inviteId: string,
