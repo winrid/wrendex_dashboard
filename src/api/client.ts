@@ -544,17 +544,17 @@ export function createApiClient(opts: CreateApiClientOptions) {
 
   // -------------------------------------------------------------------------
   // Bulk actions (plan section 3, BE iter 3). Each method takes a list of
-  // alert ids; the BE returns {updated: N}. Endpoints under /api/alerts/bulk/*.
+  // alert ids; the BE returns {updated: N}. Endpoints under /api/bulk/alerts/*.
   // -------------------------------------------------------------------------
 
   function bulkIgnore(alertIds: string[]): Promise<BulkActionResponse> {
-    return request<BulkActionResponse>("PATCH", "/api/alerts/bulk/ignore", {
+    return request<BulkActionResponse>("PATCH", "/api/bulk/alerts/ignore", {
       body: { alertIds },
     })
   }
 
   function bulkUnignore(alertIds: string[]): Promise<BulkActionResponse> {
-    return request<BulkActionResponse>("PATCH", "/api/alerts/bulk/unignore", {
+    return request<BulkActionResponse>("PATCH", "/api/bulk/alerts/unignore", {
       body: { alertIds },
     })
   }
@@ -563,7 +563,7 @@ export function createApiClient(opts: CreateApiClientOptions) {
     alertIds: string[],
     until: string,
   ): Promise<BulkActionResponse> {
-    return request<BulkActionResponse>("PATCH", "/api/alerts/bulk/snooze", {
+    return request<BulkActionResponse>("PATCH", "/api/bulk/alerts/snooze", {
       body: { alertIds, until },
     })
   }
@@ -572,7 +572,7 @@ export function createApiClient(opts: CreateApiClientOptions) {
     alertIds: string[],
     userId: string | null,
   ): Promise<BulkActionResponse> {
-    return request<BulkActionResponse>("POST", "/api/alerts/bulk/assign", {
+    return request<BulkActionResponse>("PATCH", "/api/bulk/alerts/assign", {
       body: { alertIds, userId },
     })
   }

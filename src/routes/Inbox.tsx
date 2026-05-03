@@ -13,7 +13,7 @@
 // AlertsTable; once 1+ rows are selected the BulkActionToolbar renders
 // above the table with Ignore / Snooze / Assign / Unignore options. Bulk
 // methods on the typed client - bulkIgnore / bulkSnooze / bulkAssign /
-// bulkUnignore - hit /api/alerts/bulk/* (BE iter 3).
+// bulkUnignore - hit /api/bulk/alerts/* (BE iter 3).
 //
 // Per-row actions: a kebab dropdown exposes Snooze 24h / Snooze 7d / Assign
 // / Acknowledge for individual rows that don't need bulk semantics.
