@@ -95,6 +95,7 @@ import type {
   TenantInvite,
   TenantMember,
   TenantSamlConfig,
+  TenantTlsCert,
   UpdateSamlConfigInput,
   VerifySubdomainResponse,
   TransferOwnershipInput,
@@ -794,6 +795,43 @@ export function createApiClient(opts: CreateApiClientOptions) {
     return request<VerifySubdomainResponse>(
       "POST",
       `/api/tenants/${tenantId}/branding/verify-subdomain`,
+    )
+  }
+
+  // -------------------------------------------------------------------------
+  // TLS certificate provisioning for the custom subdomain (P5 iter 3 BE).
+  // ACME / Let's Encrypt-backed; ADMIN/OWNER + AGENCY plan gates the writes.
+  //
+  // Lifecycle:
+  //   - getTlsCert    -> 200 with the current cert row, or 404 when no cert
+  //                      has ever been ordered. The FE polls this every 10s
+  //                      while status is PROVISIONING or RENEWING.
+  //   - provisionTls  -> 202 once the order is enqueued. 400 if the tenant
+  //                      has no customSubdomain set yet, 409 if the
+  //                      subdomain is not CNAME-verified or if an order is
+  //                      already in flight.
+  //   - revokeTls     -> 204. OWNER-only on the BE side; the FE surfaces a
+  //                      confirmation dialog before calling.
+  // -------------------------------------------------------------------------
+
+  function getTlsCert(tenantId: string): Promise<TenantTlsCert> {
+    return request<TenantTlsCert>(
+      "GET",
+      `/api/tenants/${tenantId}/branding/tls-cert`,
+    )
+  }
+
+  function provisionTls(tenantId: string): Promise<TenantTlsCert> {
+    return request<TenantTlsCert>(
+      "POST",
+      `/api/tenants/${tenantId}/branding/provision-tls`,
+    )
+  }
+
+  function revokeTls(tenantId: string): Promise<undefined> {
+    return request<undefined>(
+      "POST",
+      `/api/tenants/${tenantId}/branding/revoke-tls`,
     )
   }
 
@@ -1597,6 +1635,10 @@ export function createApiClient(opts: CreateApiClientOptions) {
     getBranding,
     updateBranding,
     verifySubdomain,
+    // TLS provisioning for custom subdomain (P5 iter 3 BE)
+    getTlsCert,
+    provisionTls,
+    revokeTls,
     // SAML SSO (P4 iter 4 BE)
     getSamlConfig,
     updateSamlConfig,

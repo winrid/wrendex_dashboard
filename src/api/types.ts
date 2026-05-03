@@ -1343,6 +1343,43 @@ export type VerifySubdomainResponse = {
 }
 
 // ---------------------------------------------------------------------------
+// TLS certificate provisioning for the tenant's custom subdomain (P5 iter 3
+// BE). ACME / Let's Encrypt-backed, AGENCY-only, gated on the subdomain
+// already being CNAME-verified. Lifecycle is server-driven; the FE polls the
+// GET endpoint while the cert is in a non-terminal state and re-renders into
+// the matching state. The "PROVISIONING" -> "ACTIVE" transition typically
+// takes 60-90 seconds (DNS-01 challenge + ACME finalize round trip); the
+// "RENEWING" state is set by the BE renewal sweep when a cert nears its
+// renewAfter timestamp and is otherwise transparent to the user (the current
+// cert keeps serving traffic until the renewal lands).
+// ---------------------------------------------------------------------------
+
+export type TlsCertStatus =
+  | "PROVISIONING"
+  | "ACTIVE"
+  | "RENEWING"
+  | "FAILED"
+
+export type TenantTlsCert = {
+  /** The subdomain the cert is bound to. Echoed for convenience so the FE
+   *  doesn't have to cross-reference TenantBranding when rendering. */
+  subdomain: string
+  status: TlsCertStatus
+  /** Timestamp the cert was issued by the upstream CA. Null while the order
+   *  is in flight (status=PROVISIONING with no prior cert) or after a fatal
+   *  FAILED. */
+  issuedAt?: string | null
+  /** Cert NotAfter; the BE auto-renews well before this. */
+  expiresAt?: string | null
+  /** Earliest timestamp the renewal sweep may attempt to renew. The FE
+   *  surfaces this as the user-facing "renews" relative time. */
+  renewAfter?: string | null
+  /** Set when status=FAILED. Free-form string suitable for surfacing inline
+   *  (the BE collapses ACME error chains into one human-readable message). */
+  lastError?: string | null
+}
+
+// ---------------------------------------------------------------------------
 // SAML SSO config (P4 iter 4 BE). AGENCY+OWNER-only feature. The BE owns
 // the IdP-side metadata + assertion validation; the FE just collects the
 // three required IdP fields and surfaces the SP metadata URL the customer's

@@ -27,6 +27,9 @@ const getSlackChannel = vi.fn()
 const getBranding = vi.fn()
 const updateBranding = vi.fn()
 const verifySubdomain = vi.fn()
+const getTlsCert = vi.fn()
+const provisionTls = vi.fn()
+const revokeTls = vi.fn()
 const getSamlConfig = vi.fn()
 const listShareLinks = vi.fn().mockResolvedValue([])
 
@@ -43,6 +46,9 @@ vi.mock("@/api/useApiClient", () => ({
     getBranding,
     updateBranding,
     verifySubdomain,
+    getTlsCert,
+    provisionTls,
+    revokeTls,
     getSamlConfig,
     listShareLinks,
   }),
@@ -70,8 +76,9 @@ vi.mock("@/auth/AuthProvider", () => ({
 
 import { Settings } from "../Settings"
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks()
+  const { ApiError } = await import("@/api/client")
   getEmailChannel.mockResolvedValue({
     id: "ec_1",
     tenantId: "t_1",
@@ -82,6 +89,10 @@ beforeEach(() => {
   })
   listSitesByTenant.mockResolvedValue([])
   listShareLinks.mockResolvedValue([])
+  // Default the TLS cert query to 404 (no cert) so existing test cases
+  // don't crash when the TLS subsection mounts inside the Custom subdomain
+  // card.
+  getTlsCert.mockRejectedValue(new ApiError(404, "Not Found", null))
 })
 
 afterEach(() => {

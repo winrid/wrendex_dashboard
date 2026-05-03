@@ -28,6 +28,7 @@ import type {
   TeamsChannel,
   TenantBranding,
   TenantSamlConfig,
+  TenantTlsCert,
   VerifySubdomainResponse,
 } from "@/api/types"
 import { spMetadataUrl } from "@/lib/sso"
@@ -73,7 +74,17 @@ import {
 import { SharingTab } from "@/components/share/SharingTab"
 import { TwoFactorSection } from "@/components/account/TwoFactorSection"
 import { ApiTokensSection } from "@/components/account/ApiTokensSection"
-import { siteDisplayName } from "@/lib/format"
+import { relativeTime, siteDisplayName } from "@/lib/format"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { XIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -782,8 +793,9 @@ export function CustomSubdomainCard({ tenantId }: { tenantId: string }) {
           ) : null}
         </CardTitle>
         <CardDescription>
-          Serve Wrendex from your own domain (e.g. audits.acme.com). Configures
-          the CNAME pointer only; TLS provisioning ships in a later release.
+          Serve Wrendex from your own domain (e.g. audits.acme.com). Configure
+          the CNAME pointer, then provision a Let's Encrypt TLS certificate
+          for the same subdomain.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -862,8 +874,280 @@ export function CustomSubdomainCard({ tenantId }: { tenantId: string }) {
             {verifyMut.isPending ? "Checking..." : "Check DNS"}
           </Button>
         </div>
+
+        <TlsCertSection
+          tenantId={tenantId}
+          disabled={disabled}
+          isVerified={isVerified}
+        />
       </CardContent>
     </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// TLS certificate subsection inside the Custom subdomain card (P5 iter 3
+// FE-C). Bound to getTlsCert(tenantId); polls every 10s while the cert is
+// in a non-terminal state (PROVISIONING / RENEWING) and stops once the
+// status reaches ACTIVE or FAILED.
+//
+// State surface:
+//   - 404 from getTlsCert: "No TLS certificate yet." + Provision TLS button
+//     (only enabled once the subdomain is CNAME-verified).
+//   - status=PROVISIONING: "Provisioning... (this can take 1-2 minutes)"
+//     plus a refresh-on-poll spinner indicator.
+//   - status=ACTIVE: "Active. Issued: <relative>. Renews: <relative>."
+//     plus a Revoke button gated behind a confirmation dialog.
+//   - status=RENEWING: "Renewing in the background. Current cert remains
+//     active until renewal completes."
+//   - status=FAILED: "Provisioning failed: <lastError>" plus Retry (calls
+//     provision-tls again).
+// ---------------------------------------------------------------------------
+
+const TLS_POLL_INTERVAL_MS = 10_000
+
+function TlsCertSection({
+  tenantId,
+  disabled,
+  isVerified,
+}: {
+  tenantId: string
+  disabled: boolean
+  isVerified: boolean
+}) {
+  const client = useApiClient()
+  const queryClient = useQueryClient()
+  const [revokeOpen, setRevokeOpen] = useState(false)
+
+  const certQ = useQuery<TenantTlsCert | null>({
+    queryKey: ["tls-cert", tenantId],
+    queryFn: async () => {
+      try {
+        return await client.getTlsCert(tenantId)
+      } catch (e) {
+        // 404 -> no cert ever ordered. 403 -> plan-gate (still treat as
+        // "no cert" so non-AGENCY users see the gated UI not a crash).
+        if (isApiError(e) && (e.status === 404 || e.status === 403))
+          return null
+        throw e
+      }
+    },
+    enabled: Boolean(tenantId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      if (status === "PROVISIONING" || status === "RENEWING") {
+        return TLS_POLL_INTERVAL_MS
+      }
+      return false
+    },
+    retry: (failureCount, error) => {
+      if (
+        error instanceof ApiError &&
+        (error.status === 404 || error.status === 403)
+      )
+        return false
+      return failureCount < 1
+    },
+  })
+
+  const provisionMut = useMutation({
+    mutationFn: () => client.provisionTls(tenantId),
+    onSuccess: (next) => {
+      queryClient.setQueryData<TenantTlsCert | null>(
+        ["tls-cert", tenantId],
+        next,
+      )
+      toast.success("TLS provisioning started")
+    },
+    onError: (e) => {
+      if (isApiError(e)) {
+        if (e.status === 409) {
+          toast.error(
+            "Cannot provision TLS: subdomain not verified or order already in flight.",
+          )
+          return
+        }
+        if (e.status === 400) {
+          toast.error("Set a custom subdomain before provisioning TLS.")
+          return
+        }
+        if (e.status === 403) {
+          toast.error("TLS provisioning is an Agency plan feature.")
+          return
+        }
+      }
+      toast.error("Could not start TLS provisioning. Please try again.")
+    },
+  })
+
+  const revokeMut = useMutation({
+    mutationFn: () => client.revokeTls(tenantId),
+    onSuccess: () => {
+      queryClient.setQueryData<TenantTlsCert | null>(
+        ["tls-cert", tenantId],
+        null,
+      )
+      toast.success("TLS certificate revoked")
+      setRevokeOpen(false)
+    },
+    onError: (e) => {
+      if (isApiError(e) && e.status === 403) {
+        toast.error("Only an OWNER on an Agency plan can revoke the cert.")
+        return
+      }
+      toast.error("Could not revoke certificate.")
+    },
+  })
+
+  const cert = certQ.data
+  const isPolling = certQ.isFetching
+  const status = cert?.status ?? null
+
+  return (
+    <div
+      className="mt-4 space-y-2 border-t pt-4"
+      data-testid="tls-cert-section"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-sm font-medium">TLS certificate</h4>
+        {status ? (
+          <span
+            className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+            data-testid="tls-cert-status-pill"
+          >
+            {status}
+          </span>
+        ) : null}
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        TLS provisioning uses Let's Encrypt. Allow ~60-90 seconds after the
+        DNS CNAME points at us before clicking Provision.
+      </p>
+
+      {certQ.isLoading ? (
+        <p className="text-sm text-muted-foreground" data-testid="tls-cert-loading">
+          Loading...
+        </p>
+      ) : cert == null ? (
+        <div className="space-y-2" data-testid="tls-cert-empty">
+          <p className="text-sm text-muted-foreground">
+            No TLS certificate yet.
+          </p>
+          <Button
+            type="button"
+            onClick={() => provisionMut.mutate()}
+            disabled={
+              disabled || !isVerified || provisionMut.isPending
+            }
+            data-testid="tls-cert-provision"
+          >
+            {provisionMut.isPending ? "Starting..." : "Provision TLS"}
+          </Button>
+          {!isVerified ? (
+            <p className="text-xs text-muted-foreground">
+              Verify the subdomain CNAME first to enable TLS provisioning.
+            </p>
+          ) : null}
+        </div>
+      ) : status === "PROVISIONING" ? (
+        <div
+          className="flex items-center gap-2 text-sm text-muted-foreground"
+          data-testid="tls-cert-provisioning"
+        >
+          <span
+            className="inline-block h-2 w-2 animate-pulse rounded-full bg-amber-500"
+            data-testid={
+              isPolling ? "tls-cert-poll-active" : "tls-cert-poll-idle"
+            }
+            aria-hidden
+          />
+          <span>Provisioning... (this can take 1-2 minutes)</span>
+        </div>
+      ) : status === "ACTIVE" ? (
+        <div className="space-y-2" data-testid="tls-cert-active">
+          <p className="text-sm">
+            Active. Issued:{" "}
+            <span data-testid="tls-cert-issued">
+              {relativeTime(cert.issuedAt)}
+            </span>
+            . Renews:{" "}
+            <span data-testid="tls-cert-renews">
+              {relativeTime(cert.renewAfter)}
+            </span>
+            .
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setRevokeOpen(true)}
+            disabled={disabled}
+            data-testid="tls-cert-revoke"
+          >
+            Revoke
+          </Button>
+        </div>
+      ) : status === "RENEWING" ? (
+        <div
+          className="flex items-center gap-2 text-sm text-muted-foreground"
+          data-testid="tls-cert-renewing"
+        >
+          <span
+            className="inline-block h-2 w-2 animate-pulse rounded-full bg-sky-500"
+            aria-hidden
+          />
+          <span>
+            Renewing in the background. Current cert remains active until
+            renewal completes.
+          </span>
+        </div>
+      ) : status === "FAILED" ? (
+        <div className="space-y-2" data-testid="tls-cert-failed">
+          <p className="text-sm text-destructive">
+            Provisioning failed: {cert.lastError ?? "unknown error"}
+          </p>
+          <Button
+            type="button"
+            onClick={() => provisionMut.mutate()}
+            disabled={disabled || provisionMut.isPending}
+            data-testid="tls-cert-retry"
+          >
+            {provisionMut.isPending ? "Retrying..." : "Retry"}
+          </Button>
+        </div>
+      ) : null}
+
+      <AlertDialog
+        open={revokeOpen}
+        onOpenChange={(o) => !o && setRevokeOpen(false)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revoke TLS certificate?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The certificate for{" "}
+              <span className="font-mono">{cert?.subdomain}</span> will be
+              revoked immediately. Visitors hitting that subdomain will see
+              browser TLS errors until you provision a new cert.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={revokeMut.isPending}
+              onClick={(e) => {
+                e.preventDefault()
+                revokeMut.mutate()
+              }}
+              data-testid="tls-cert-revoke-confirm"
+            >
+              {revokeMut.isPending ? "Revoking..." : "Revoke"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   )
 }
 

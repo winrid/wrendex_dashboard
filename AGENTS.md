@@ -539,10 +539,38 @@ shipped; do not add escape-hatch UX without coordinating with the BE.
 - **Custom subdomain UI configures CNAME pointers only.** The Settings ->
   Tenant -> Custom subdomain card stores the customer's chosen subdomain
   and verifies the CNAME points at wrendex.com via
-  `verifySubdomain(tenantId)`. TLS certificate provisioning + reverse-proxy
-  routing for the configured subdomain is Phase 5+ infra work; until then
-  visitors must reach the dashboard via `app.wrendex.com`. The verification
-  pill therefore reflects DNS health only, not end-to-end reachability.
+  `verifySubdomain(tenantId)`. The TLS provisioning subsection (P5 iter 3)
+  bolts ACME-backed cert lifecycle onto the same card; reverse-proxy routing
+  for the configured subdomain is still Phase 5+ infra work.
+
+## TLS provisioning lifecycle (P5 iter 3)
+
+The Settings -> Tenant -> Custom subdomain card carries a "TLS certificate"
+subsection below the DNS verification pill. Bound to `getTlsCert(tenantId)`
+with three typed-client methods: `getTlsCert`, `provisionTls`, `revokeTls`.
+New types: `TenantTlsCert`, `TlsCertStatus`. The state machine the FE
+surfaces:
+
+  - 404 from getTlsCert -> "No TLS certificate yet." + Provision TLS button
+    (gated on `customSubdomainVerifiedAt` being set).
+  - status=PROVISIONING -> "Provisioning... (this can take 1-2 minutes)"
+    plus an animated poll-active indicator. The query refetches every 10s
+    while status is PROVISIONING or RENEWING; auto-stops on ACTIVE / FAILED.
+  - status=ACTIVE -> "Active. Issued: <relative>. Renews: <relative>."
+    plus a Revoke button that opens an AlertDialog confirmation; confirm
+    calls `revokeTls(tenantId)` (OWNER-only on the BE).
+  - status=RENEWING -> "Renewing in the background. Current cert remains
+    active until renewal completes." (No user action; the BE renewal sweep
+    drives the transition back to ACTIVE.)
+  - status=FAILED -> "Provisioning failed: <lastError>" + Retry button that
+    re-calls `provisionTls(tenantId)`.
+
+`provisionTls` 409s when the subdomain is not yet CNAME-verified or an
+order is already in flight; 400 if the subdomain is unset; 403 for non-
+AGENCY tenants. The card surfaces those as toasts and leaves the cert
+state untouched. The inline help text under the section heading reads:
+"TLS provisioning uses Let's Encrypt. Allow ~60-90 seconds after the DNS
+CNAME points at us before clicking Provision."
 
 ## Code-splitting
 
