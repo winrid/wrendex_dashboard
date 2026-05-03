@@ -259,6 +259,39 @@ typed client already hits for the JSON form; `?format=csv` is appended by
 the helper. `src/lib/download.ts` is the only authorised raw-fetch surface
 in feature code.
 
+## PDF export pattern (sec 12.2)
+
+Every report toolbar that supports PDF export sits an `<PdfExportButton>`
+next to the existing `<CsvExportButton>` (see `src/components/pdf/`). The
+component takes `path` (BE PDF endpoint, e.g.
+`/api/crawls/{crawlId}/pages/pdf`), `filename`, and `tenantId` (so the
+plan-gate 403 toast can deep-link to `/t/:tenantId/billing`). It pipes
+the response through `downloadPdf` in `src/lib/download.ts`. The PDF
+endpoints are PROFESSIONAL or AGENCY plan only; the BE returns 403 for
+STARTER tenants and the button surfaces an upgrade prompt with a Billing
+link. PDF endpoints are dedicated (no JSON form to content-negotiate
+against), so URL construction lives in the consumer (next to the
+report's CSV path) rather than in the typed client.
+
+## White-label branding flow (sec 12.3)
+
+Per-tenant branding (logo, accent colour, "from name", hide
+"Powered by Wrendex" toggle) is AGENCY-plan only and lives in
+Settings -> Tenant -> Branding card (`BrandingCard` in
+`src/routes/Settings.tsx`). The card is bound to
+`getBranding(tenantId)` / `updateBranding(tenantId, ...)`; non-AGENCY
+tenants see the form disabled with an "Agency plan only" badge, and a
+403 from the PUT surfaces an upgrade-prompt toast with a Billing link.
+
+`AuthProvider` loads the active tenant's branding alongside `/api/me`
+and applies the accent to `document.documentElement` as a CSS variable
+(`--brand-accent`); `AppShell` swaps its built-in W-mark for
+`branding.logoDataUrl` when present. The `/shared/:token` route reads
+the same fields off `SharedLinkInfo` (the BE-C agent extends the
+resolve payload with `logoDataUrl`, `accentColor`, `hidePoweredBy`);
+when the BE has not shipped them yet the FE falls back to default
+branding for shared views.
+
 ## Channels matrix
 
 Per-tenant alert channels, ordered by ship date:

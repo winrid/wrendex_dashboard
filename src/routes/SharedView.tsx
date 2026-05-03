@@ -62,6 +62,9 @@ function Banner({ info }: { info: SharedLinkInfo }) {
   const expiresLabel = info.expiresAt
     ? `Expires ${relativeTime(info.expiresAt)}.`
     : "No expiry."
+  // Apply white-label branding (plan section 12.3) when the BE supplied it
+  // on the resolve payload. Defaults to the Wrendex logo + brand mark when
+  // missing; the BE-C agent extends SharedLinkInfo with these fields.
   return (
     <header
       className="border-b bg-card"
@@ -69,12 +72,23 @@ function Banner({ info }: { info: SharedLinkInfo }) {
     >
       <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-3 px-4 py-2">
         <div className="flex items-center gap-2">
-          <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-sm font-bold">
-            W
-          </div>
+          {info.logoDataUrl ? (
+            <img
+              src={info.logoDataUrl}
+              alt={`${info.tenantName} logo`}
+              className="h-7 w-auto max-w-[10rem] object-contain"
+              data-testid="shared-branded-logo"
+            />
+          ) : (
+            <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-sm font-bold">
+              W
+            </div>
+          )}
           <div className="text-sm">
-            <span className="font-medium">Wrendex</span>
-            <span className="ml-2 text-muted-foreground">
+            {info.logoDataUrl ? null : (
+              <span className="font-medium">Wrendex</span>
+            )}
+            <span className={info.logoDataUrl ? "text-muted-foreground" : "ml-2 text-muted-foreground"}>
               Read-only share from {info.tenantName}.
             </span>
             <span className="ml-1 text-muted-foreground">{expiresLabel}</span>
@@ -697,6 +711,7 @@ export function SharedView() {
 
   return (
     <ReadOnlyProvider value={true}>
+      <SharedBrandingApplier info={share} />
       <div className="min-h-screen bg-background">
         <Banner info={share} />
         <main className="mx-auto max-w-screen-2xl p-6">
@@ -708,8 +723,43 @@ export function SharedView() {
             <CrawlReportSharedView info={share} payload={payload} />
           )}
         </main>
+        {share.hidePoweredBy ? null : (
+          <footer
+            className="border-t bg-card py-3 text-center text-xs text-muted-foreground"
+            data-testid="shared-powered-by"
+          >
+            Powered by Wrendex
+          </footer>
+        )}
         <Toaster />
       </div>
     </ReadOnlyProvider>
   )
+}
+
+/** Applies the shared link's accent colour to document.documentElement
+ *  while the shared view is mounted. Cleans up on unmount so navigating
+ *  back to a tenant-scoped page restores the (auth-driven) branding.
+ *  Plan section 12.3. */
+function SharedBrandingApplier({ info }: { info: SharedLinkInfo }) {
+  useEffect(() => {
+    if (typeof document === "undefined") return
+    const accent = info.accentColor
+    if (!accent) return
+    const previous = document.documentElement.style.getPropertyValue(
+      "--brand-accent",
+    )
+    document.documentElement.style.setProperty("--brand-accent", accent)
+    return () => {
+      if (previous) {
+        document.documentElement.style.setProperty(
+          "--brand-accent",
+          previous,
+        )
+      } else {
+        document.documentElement.style.removeProperty("--brand-accent")
+      }
+    }
+  }, [info.accentColor])
+  return null
 }

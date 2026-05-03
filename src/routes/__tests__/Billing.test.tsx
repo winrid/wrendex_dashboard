@@ -20,6 +20,7 @@ const createCheckoutSession = vi.fn().mockResolvedValue({
 })
 const createPortalSession = vi.fn()
 const sendTelemetry = vi.fn()
+const listInvoices = vi.fn().mockResolvedValue({ items: [] })
 
 vi.mock("@/api/useApiClient", () => ({
   useApiClient: () => ({
@@ -27,6 +28,7 @@ vi.mock("@/api/useApiClient", () => ({
     createCheckoutSession,
     createPortalSession,
     sendTelemetry,
+    listInvoices,
   }),
 }))
 
@@ -68,6 +70,7 @@ beforeEach(() => {
     url: "https://checkout.stripe.com/pay/cs_test_xyz",
     sessionId: "cs_test_xyz",
   })
+  listInvoices.mockResolvedValue({ items: [] })
   // Replace window.location with a mockable surface so the Subscribe
   // button's redirect doesn't navigate the test runner. jsdom's location
   // object is read-only by default.

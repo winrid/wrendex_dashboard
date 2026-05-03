@@ -28,6 +28,7 @@ import type {
 } from "@/api/types"
 import { Button } from "@/components/ui/button"
 import { DataTable } from "@/components/data-table/DataTable"
+import { PdfExportButton } from "@/components/pdf/PdfExportButton"
 import { ShareButton } from "@/components/share/ShareButton"
 import { cn } from "@/lib/utils"
 import { relativeTime, siteDisplayName } from "@/lib/format"
@@ -306,6 +307,11 @@ export function HealthHistory() {
                 </Button>
               ))}
             </div>
+            <PdfExportButton
+              path={`/api/sites/${siteId}/health-history/pdf`}
+              filename={`health-history-${siteId}.pdf`}
+              tenantId={tenantId}
+            />
             <ShareButton scope="SITE" targetId={siteId} />
           </div>
         </div>

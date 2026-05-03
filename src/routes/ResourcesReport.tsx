@@ -22,6 +22,7 @@ import {
 import { useApiClient } from "@/api/useApiClient"
 import type { ResourceEntry, ResourcesResult } from "@/api/types"
 import { CsvExportButton } from "@/components/csv/CsvExportButton"
+import { PdfExportButton } from "@/components/pdf/PdfExportButton"
 import { ShareButton } from "@/components/share/ShareButton"
 import { DataTable } from "@/components/data-table/DataTable"
 import { Badge } from "@/components/ui/badge-fallback"
@@ -241,6 +242,11 @@ export function ResourcesReport() {
               <CsvExportButton
                 path={`/api/crawls/${crawlId}/resources`}
                 filename={`resources-${crawlId}.csv`}
+              />
+              <PdfExportButton
+                path={`/api/crawls/${crawlId}/resources/pdf`}
+                filename={`resources-${crawlId}.pdf`}
+                tenantId={tenantId}
               />
               <ShareButton
                 scope="CRAWL_REPORT"

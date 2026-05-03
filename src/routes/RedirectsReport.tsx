@@ -15,6 +15,7 @@ import { ExternalLinkIcon } from "lucide-react"
 import { useApiClient } from "@/api/useApiClient"
 import type { RedirectEntry, RedirectsResult } from "@/api/types"
 import { CsvExportButton } from "@/components/csv/CsvExportButton"
+import { PdfExportButton } from "@/components/pdf/PdfExportButton"
 import { ShareButton } from "@/components/share/ShareButton"
 import { DataTable } from "@/components/data-table/DataTable"
 import { Badge } from "@/components/ui/badge-fallback"
@@ -159,6 +160,11 @@ export function RedirectsReport() {
             <CsvExportButton
               path={`/api/crawls/${crawlId}/redirects`}
               filename={`redirects-${crawlId}.csv`}
+            />
+            <PdfExportButton
+              path={`/api/crawls/${crawlId}/redirects/pdf`}
+              filename={`redirects-${crawlId}.pdf`}
+              tenantId={tenantId}
             />
             <ShareButton
               scope="CRAWL_REPORT"

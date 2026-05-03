@@ -1128,6 +1128,78 @@ export type StatusResponse = {
 }
 
 // ---------------------------------------------------------------------------
+// Tenant branding (plan section 12.3 - white-label, Agency only). The BE
+// returns null fields for tenants that have never customised; the FE
+// falls back to its built-in defaults when absent.
+// ---------------------------------------------------------------------------
+
+export type TenantBranding = {
+  tenantId: string
+  /** data: URL with the SVG / PNG logo. Capped at 200KB by the FE. */
+  logoDataUrl?: string | null
+  /** Hex (#RRGGBB) accent colour applied to --brand-accent CSS var. */
+  accentColor?: string | null
+  /** Display name used as "Sent from <fromName>" in alert emails. */
+  fromName?: string | null
+  /** When true, hide the "Powered by Wrendex" footer on shared / PDF
+   *  reports. AGENCY-only feature; BE 403s for lower tiers. */
+  hidePoweredBy?: boolean | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type UpdateTenantBrandingInput = {
+  logoDataUrl?: string | null
+  accentColor?: string | null
+  fromName?: string | null
+  hidePoweredBy?: boolean | null
+}
+
+// ---------------------------------------------------------------------------
+// Stripe invoice listing (plan section 11). The BE proxies the Stripe
+// invoices.list call for the tenant's customer and returns a slim wire
+// shape. Empty list while the tenant is still on trial.
+// ---------------------------------------------------------------------------
+
+export type InvoiceStatus =
+  | "draft"
+  | "open"
+  | "paid"
+  | "uncollectible"
+  | "void"
+  | string
+
+export type Invoice = {
+  id: string
+  /** Stripe-issued human-readable invoice number (e.g. "ACME-0001"). May
+   *  be null on draft invoices; rendered as the id when missing. */
+  number?: string | null
+  /** Charge total in the smallest currency unit (cents). */
+  amount: number
+  /** ISO 4217 currency code, lowercased per Stripe convention. */
+  currency: string
+  status: InvoiceStatus
+  /** Stripe-hosted page where the customer can pay / view the invoice. */
+  hostedInvoiceUrl?: string | null
+  /** Direct PDF download from Stripe. */
+  invoicePdfUrl?: string | null
+  /** Period covered by the invoice (subscription cycle bounds). */
+  periodStart?: string | null
+  periodEnd?: string | null
+  paidAt?: string | null
+  createdAt: string
+}
+
+export type ListInvoicesParams = {
+  /** Cap on the number of invoices to return. BE defaults to 20. */
+  limit?: number
+}
+
+export type ListInvoicesResult = {
+  items: Invoice[]
+}
+
+// ---------------------------------------------------------------------------
 // Team management (plan section 14.2 / phase 3 iter 1 BE). Per-tenant invite
 // + member management + audit log surface. Mirrors the BE wire shapes shipped
 // by the parallel BE agent for invites, members, transfer-ownership and audit
@@ -1339,6 +1411,13 @@ export type SharedLinkInfo = {
   /** Hostname / display name of the site the share targets, used in the
    *  banner subtitle so recipients see which site they're looking at. */
   siteDisplayName?: string | null
+  /** Optional white-label branding lifted from the tenant (plan section
+   *  12.3). When the BE-C agent has not extended the resolve payload yet
+   *  these will be null/undefined and the shared view falls back to the
+   *  default Wrendex branding. */
+  logoDataUrl?: string | null
+  accentColor?: string | null
+  hidePoweredBy?: boolean | null
 }
 
 /** Payload bag the read-only screens render against. The set of populated

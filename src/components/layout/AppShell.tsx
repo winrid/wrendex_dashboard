@@ -136,7 +136,7 @@ function UserMenu() {
 
 export function AppShell() {
   const { tenantId } = useParams()
-  const { setActiveTenant } = useAuth()
+  const { setActiveTenant, branding } = useAuth()
 
   // The /t/:tenantId URL is the source of truth while inside the shell.
   // Mirror it into AuthProvider state so the user menu / future widgets
@@ -154,10 +154,21 @@ export function AppShell() {
             to={`/t/${safeTenantId}/sites`}
             className="flex items-center gap-2 px-1"
           >
-            <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-sm font-bold">
-              W
-            </div>
-            <span className="text-base font-semibold">Wrendex</span>
+            {branding?.logoDataUrl ? (
+              <img
+                src={branding.logoDataUrl}
+                alt="Tenant logo"
+                className="h-7 w-auto max-w-[10rem] object-contain"
+                data-testid="tenant-branded-logo"
+              />
+            ) : (
+              <>
+                <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-sm font-bold">
+                  W
+                </div>
+                <span className="text-base font-semibold">Wrendex</span>
+              </>
+            )}
           </Link>
         </SidebarHeader>
         <SidebarContent>

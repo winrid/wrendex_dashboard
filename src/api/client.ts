@@ -41,6 +41,8 @@ import type {
   HealthScorePoint,
   InvitePublicView,
   IssuesSummary,
+  ListInvoicesParams,
+  ListInvoicesResult,
   LinkExploreParams,
   LinkResult,
   ListAuditLogParams,
@@ -70,6 +72,7 @@ import type {
   StartSlackInstallResponse,
   StatusResponse,
   TeamsChannel,
+  TenantBranding,
   TenantInvite,
   TenantMember,
   TransferOwnershipInput,
@@ -87,6 +90,7 @@ import type {
   UpdateEmailChannelInput,
   UpdateSiteInput,
   UpdateSiteScheduleInput,
+  UpdateTenantBrandingInput,
 } from "./types"
 
 // ---------------------------------------------------------------------------
@@ -688,6 +692,49 @@ export function createApiClient(opts: CreateApiClientOptions) {
     )
   }
 
+  /** GET /api/tenants/{tenantId}/billing/invoices?limit=20. Returns the
+   *  Stripe invoices proxy list. The BE returns an empty items array when
+   *  the tenant has no Stripe customer yet (still on trial / no charges). */
+  function listInvoices(
+    tenantId: string,
+    params: ListInvoicesParams = {},
+  ): Promise<ListInvoicesResult> {
+    return request<ListInvoicesResult>(
+      "GET",
+      `/api/tenants/${tenantId}/billing/invoices`,
+      {
+        query: {
+          limit: params.limit,
+        },
+      },
+    )
+  }
+
+  // -------------------------------------------------------------------------
+  // Tenant branding (plan section 12.3 - white-label, Agency only). The PUT
+  // 403s for non-AGENCY tenants; the FE catches that and surfaces the
+  // upgrade-toast. The GET is open to all members so the FE can render the
+  // current values (it just stays disabled for non-AGENCY tiers).
+  // -------------------------------------------------------------------------
+
+  function getBranding(tenantId: string): Promise<TenantBranding> {
+    return request<TenantBranding>(
+      "GET",
+      `/api/tenants/${tenantId}/branding`,
+    )
+  }
+
+  function updateBranding(
+    tenantId: string,
+    input: UpdateTenantBrandingInput,
+  ): Promise<TenantBranding> {
+    return request<TenantBranding>(
+      "PUT",
+      `/api/tenants/${tenantId}/branding`,
+      { body: input },
+    )
+  }
+
   // -------------------------------------------------------------------------
   // Alert rules - AlertRuleController (plan section 8.1; iter 6 BE)
   // -------------------------------------------------------------------------
@@ -1204,6 +1251,10 @@ export function createApiClient(opts: CreateApiClientOptions) {
     getBilling,
     createCheckoutSession,
     createPortalSession,
+    listInvoices,
+    // tenant branding (white-label, Agency only)
+    getBranding,
+    updateBranding,
     // alert rules
     listAlertRules,
     updateAlertRule,

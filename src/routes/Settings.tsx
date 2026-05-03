@@ -6,7 +6,7 @@
 //              MS Teams + PagerDuty channel editors (BE iter 2 round 2).
 //   Sites    - list of sites with a link to per-site settings.
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ChangeEvent } from "react"
 import { Link, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -26,6 +26,7 @@ import type {
   Site,
   SlackChannel,
   TeamsChannel,
+  TenantBranding,
 } from "@/api/types"
 import {
   Tabs,
@@ -54,6 +55,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { Toaster } from "@/components/ui/sonner"
 import { SharingTab } from "@/components/share/SharingTab"
 import { siteDisplayName } from "@/lib/format"
@@ -297,7 +299,313 @@ function TenantTab({ tenantId }: { tenantId: string }) {
       <SlackChannelCard tenantId={tenantId} />
       <TeamsChannelCard tenantId={tenantId} />
       <PagerDutyChannelCard tenantId={tenantId} />
+      <BrandingCard tenantId={tenantId} />
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Branding (white-label) card. Plan section 12.3, AGENCY-only feature.
+// Visible to all tiers but disabled with an "Agency plan only" badge for
+// non-AGENCY tenants. The PUT endpoint 403s for lower tiers; we catch that
+// and surface the upgrade prompt as a toast.
+//
+// Logo upload uses a FileReader -> data URL; the BE persists the data URL
+// directly. SVG / PNG, capped at 200KB on the client to keep the payload
+// manageable (the BE can apply a stricter cap server-side).
+// ---------------------------------------------------------------------------
+
+const ACCENT_HEX_RE = /^#[0-9a-fA-F]{6}$/
+const LOGO_MAX_BYTES = 200 * 1024
+const LOGO_MIME_RE = /^image\/(svg\+xml|png)$/i
+const DEFAULT_ACCENT = "#3b82f6"
+
+function isValidAccent(hex: string): boolean {
+  return ACCENT_HEX_RE.test(hex.trim())
+}
+
+export function BrandingCard({ tenantId }: { tenantId: string }) {
+  const client = useApiClient()
+  const queryClient = useQueryClient()
+
+  const billingQ = useQuery<BillingSnapshot>({
+    queryKey: ["billing", tenantId],
+    queryFn: () => client.getBilling(tenantId),
+    enabled: Boolean(tenantId),
+  })
+
+  const brandingQ = useQuery<TenantBranding | null>({
+    queryKey: ["branding", tenantId],
+    queryFn: async () => {
+      try {
+        return await client.getBranding(tenantId)
+      } catch (e) {
+        // 404 = never customised; surface as null so the form falls back to
+        // defaults. 403 = plan-gated; the disabled flag below is what
+        // surfaces the Agency only badge so we still treat it as "no
+        // branding loaded".
+        if (isApiError(e) && (e.status === 404 || e.status === 403)) return null
+        throw e
+      }
+    },
+    enabled: Boolean(tenantId),
+    retry: (failureCount, error) => {
+      if (
+        error instanceof ApiError &&
+        (error.status === 404 || error.status === 403)
+      )
+        return false
+      return failureCount < 1
+    },
+  })
+
+  const [logoDataUrl, setLogoDataUrl] = useState<string | null>(null)
+  const [accentColor, setAccentColor] = useState<string>(DEFAULT_ACCENT)
+  const [fromName, setFromName] = useState<string>("")
+  const [hidePoweredBy, setHidePoweredBy] = useState<boolean>(false)
+  const [accentError, setAccentError] = useState<string | null>(null)
+  const [logoError, setLogoError] = useState<string | null>(null)
+
+  // Sync server snapshot into local form state on first load / refetch.
+  useEffect(() => {
+    if (!brandingQ.data) return
+    setLogoDataUrl(brandingQ.data.logoDataUrl ?? null)
+    setAccentColor(brandingQ.data.accentColor ?? DEFAULT_ACCENT)
+    setFromName(brandingQ.data.fromName ?? "")
+    setHidePoweredBy(Boolean(brandingQ.data.hidePoweredBy))
+  }, [brandingQ.data])
+
+  const saveMut = useMutation({
+    mutationFn: () =>
+      client.updateBranding(tenantId, {
+        logoDataUrl,
+        accentColor,
+        fromName: fromName.trim() || null,
+        hidePoweredBy,
+      }),
+    onSuccess: (next) => {
+      queryClient.setQueryData<TenantBranding>(["branding", tenantId], next)
+      // Eager-apply the new accent so the dashboard reflects the change
+      // before the AuthProvider's branding query refetches.
+      if (typeof document !== "undefined" && next.accentColor) {
+        document.documentElement.style.setProperty(
+          "--brand-accent",
+          next.accentColor,
+        )
+      }
+      toast.success("Branding updated")
+    },
+    onError: (e) => {
+      if (isApiError(e) && e.status === 403) {
+        toast.error(
+          "White-label branding is an Agency plan feature. Upgrade in Billing.",
+          {
+            action: {
+              label: "Upgrade",
+              onClick: () => {
+                window.location.href = `/t/${tenantId}/billing`
+              },
+            },
+          },
+        )
+        return
+      }
+      toast.error("Could not save branding. Please try again.")
+    },
+  })
+
+  const onPickLogo = (e: ChangeEvent<HTMLInputElement>) => {
+    setLogoError(null)
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!LOGO_MIME_RE.test(file.type)) {
+      setLogoError("Logo must be an SVG or PNG file")
+      return
+    }
+    if (file.size > LOGO_MAX_BYTES) {
+      setLogoError("Logo must be 200KB or smaller")
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result
+      if (typeof result === "string") {
+        setLogoDataUrl(result)
+      }
+    }
+    reader.onerror = () => {
+      setLogoError("Could not read logo file")
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const onSave = () => {
+    if (!isValidAccent(accentColor)) {
+      setAccentError("Accent colour must be a 6-digit hex (e.g. #3b82f6)")
+      return
+    }
+    setAccentError(null)
+    saveMut.mutate()
+  }
+
+  const plan = billingQ.data?.plan
+  const isAgency = planAtLeast(plan, "AGENCY")
+  const disabled = !isAgency
+
+  return (
+    <Card data-testid="branding-card">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          Branding
+          {disabled ? (
+            <span
+              className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
+              data-testid="branding-plan-gate"
+            >
+              Agency plan only
+            </span>
+          ) : null}
+        </CardTitle>
+        <CardDescription>
+          Customise the logo, accent colour, and email "from" name shown on
+          shared reports and PDFs.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="branding-logo">Logo</Label>
+          <div className="flex items-center gap-3">
+            {logoDataUrl ? (
+              <img
+                src={logoDataUrl}
+                alt="Tenant logo preview"
+                className="h-12 w-auto max-w-[12rem] rounded border bg-background p-1"
+                data-testid="branding-logo-preview"
+              />
+            ) : (
+              <div className="flex h-12 w-24 items-center justify-center rounded border border-dashed text-xs text-muted-foreground">
+                No logo
+              </div>
+            )}
+            <Input
+              id="branding-logo"
+              type="file"
+              accept="image/svg+xml,image/png"
+              onChange={onPickLogo}
+              disabled={disabled}
+              data-testid="branding-logo-input"
+              className="max-w-xs"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            SVG or PNG, up to 200KB.
+          </p>
+          {logoError ? (
+            <p className="text-xs text-destructive" data-testid="branding-logo-error">
+              {logoError}
+            </p>
+          ) : null}
+          {logoDataUrl ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setLogoDataUrl(null)}
+              disabled={disabled}
+            >
+              Remove logo
+            </Button>
+          ) : null}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="branding-accent">Accent colour</Label>
+          <div className="flex items-center gap-2">
+            <input
+              type="color"
+              value={isValidAccent(accentColor) ? accentColor : DEFAULT_ACCENT}
+              onChange={(e) => {
+                setAccentColor(e.target.value)
+                setAccentError(null)
+              }}
+              disabled={disabled}
+              aria-label="Accent colour picker"
+              className="h-9 w-12 cursor-pointer rounded border bg-background"
+              data-testid="branding-accent-picker"
+            />
+            <Input
+              id="branding-accent"
+              type="text"
+              value={accentColor}
+              onChange={(e) => {
+                setAccentColor(e.target.value)
+                setAccentError(null)
+              }}
+              disabled={disabled}
+              placeholder="#3b82f6"
+              className="max-w-[10rem] font-mono"
+              aria-invalid={accentError ? true : undefined}
+              data-testid="branding-accent-input"
+            />
+          </div>
+          {accentError ? (
+            <p
+              className="text-xs text-destructive"
+              data-testid="branding-accent-error"
+            >
+              {accentError}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="branding-from-name">From name</Label>
+          <Input
+            id="branding-from-name"
+            type="text"
+            value={fromName}
+            onChange={(e) => setFromName(e.target.value)}
+            placeholder="Acme SEO"
+            disabled={disabled}
+            className="max-w-sm"
+            data-testid="branding-from-name"
+          />
+          <p className="text-xs text-muted-foreground">
+            Appears as "Sent from {fromName.trim() || "Wrendex"}" in alert
+            emails.
+          </p>
+        </div>
+
+        <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+          <div>
+            <Label htmlFor="branding-hide-powered" className="text-sm">
+              Hide "Powered by Wrendex"
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              Removes the footer from shared reports and PDFs.
+            </p>
+          </div>
+          <Switch
+            id="branding-hide-powered"
+            checked={hidePoweredBy}
+            onCheckedChange={(v) => setHidePoweredBy(Boolean(v))}
+            disabled={disabled}
+            data-testid="branding-hide-powered"
+          />
+        </div>
+
+        <div>
+          <Button
+            type="button"
+            onClick={onSave}
+            disabled={disabled || saveMut.isPending}
+            data-testid="branding-save"
+          >
+            {saveMut.isPending ? "Saving..." : "Save"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

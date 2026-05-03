@@ -26,6 +26,7 @@ import type { DuplicateGroup, DuplicatesResult } from "@/api/types"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge-fallback"
 import { CsvExportButton } from "@/components/csv/CsvExportButton"
+import { PdfExportButton } from "@/components/pdf/PdfExportButton"
 import { ShareButton } from "@/components/share/ShareButton"
 import { cn } from "@/lib/utils"
 
@@ -183,6 +184,11 @@ export function DuplicatesReport() {
             <CsvExportButton
               path={`/api/crawls/${crawlId}/duplicates`}
               filename={`duplicates-${crawlId}.csv`}
+            />
+            <PdfExportButton
+              path={`/api/crawls/${crawlId}/duplicates/pdf`}
+              filename={`duplicates-${crawlId}.pdf`}
+              tenantId={tenantId}
             />
             <ShareButton
               scope="CRAWL_REPORT"

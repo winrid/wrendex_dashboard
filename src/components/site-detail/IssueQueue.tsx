@@ -5,6 +5,7 @@
 
 import { Link } from "react-router-dom"
 import type { IssuesSummary } from "@/api/types"
+import { PdfExportButton } from "@/components/pdf/PdfExportButton"
 import { useReadOnly } from "@/components/share/ReadOnlyContext"
 import { cn } from "@/lib/utils"
 
@@ -48,8 +49,16 @@ export function IssueQueue({
 
   return (
     <div className="rounded-md border bg-card">
-      <div className="border-b px-4 py-2 text-sm font-medium">
-        Issues by category
+      <div className="flex items-center justify-between border-b px-4 py-2 text-sm font-medium">
+        <span>Issues by category</span>
+        {readOnly ? null : (
+          <PdfExportButton
+            path={`/api/crawls/${crawlId}/issues/pdf`}
+            filename={`issues-${crawlId}.pdf`}
+            tenantId={tenantId}
+            compact
+          />
+        )}
       </div>
       <ul className="divide-y">
         {rows.map((row) => {

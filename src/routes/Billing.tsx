@@ -9,13 +9,20 @@
 // customer (BillingSnapshot.hasPaymentMethod). Invoice history is a
 // "Coming soon" stub - the BE doesn't expose an invoice list yet.
 
-import { useEffect } from "react"
+import { useEffect, useMemo } from "react"
 import { useParams } from "react-router-dom"
 import { useMutation, useQuery } from "@tanstack/react-query"
+import { type ColumnDef } from "@tanstack/react-table"
 import { toast } from "sonner"
 import { useApiClient } from "@/api/useApiClient"
 import { useAuth } from "@/auth/AuthProvider"
-import type { BillingSnapshot, Plan, SubscriptionStatus } from "@/api/types"
+import type {
+  BillingSnapshot,
+  Invoice,
+  ListInvoicesResult,
+  Plan,
+  SubscriptionStatus,
+} from "@/api/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge-fallback"
 import {
@@ -25,8 +32,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { DataTable } from "@/components/data-table/DataTable"
 import { Toaster } from "@/components/ui/sonner"
-import { CheckIcon } from "lucide-react"
+import { CheckIcon, ExternalLinkIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 // ---------------------------------------------------------------------------
@@ -312,20 +320,194 @@ export function Billing() {
         </CardContent>
       </Card>
 
-      {/* Invoices stub */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Invoices</CardTitle>
-          <CardDescription>
-            A list of past invoices will appear here. For now, download them
-            from the billing portal.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">Coming soon.</p>
-        </CardContent>
-      </Card>
+      {/* Invoices */}
+      <InvoicesCard tenantId={tenantId} />
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Invoices list (plan section 11). Bound to listInvoices(tenantId, {limit}).
+// Renders the Stripe invoice rows in DataTable; empty state explains the
+// "trial -> first invoice" lifecycle.
+// ---------------------------------------------------------------------------
+
+function formatAmount(amountCents: number, currency: string): string {
+  // Stripe amounts are in the smallest currency unit (cents for USD, etc.).
+  // Use Intl.NumberFormat for currency-aware grouping + symbol; fall back to
+  // a raw cents/100 string when the currency code isn't supported.
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: currency.toUpperCase(),
+      minimumFractionDigits: 2,
+    }).format(amountCents / 100)
+  } catch {
+    return `${(amountCents / 100).toFixed(2)} ${currency.toUpperCase()}`
+  }
+}
+
+function statusBadgeClass(status: string): string {
+  switch (status) {
+    case "paid":
+      return "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+    case "open":
+      return "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+    case "uncollectible":
+    case "void":
+      return "bg-red-500/15 text-red-700 dark:text-red-300"
+    case "draft":
+    default:
+      return "bg-muted text-muted-foreground"
+  }
+}
+
+function formatDateShort(value?: string | null): string {
+  if (!value) return "-"
+  try {
+    return new Date(value).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    })
+  } catch {
+    return value
+  }
+}
+
+function InvoicesCard({ tenantId }: { tenantId: string }) {
+  const client = useApiClient()
+  const invoicesQ = useQuery<ListInvoicesResult>({
+    queryKey: ["invoices", tenantId],
+    queryFn: () => client.listInvoices(tenantId, { limit: 20 }),
+    enabled: Boolean(tenantId),
+  })
+
+  const items = useMemo<Invoice[]>(
+    () => invoicesQ.data?.items ?? [],
+    [invoicesQ.data],
+  )
+
+  const columns = useMemo<ColumnDef<Invoice>[]>(
+    () => [
+      {
+        id: "number",
+        header: "Invoice",
+        cell: ({ row }) => (
+          <span className="font-mono text-xs">
+            {row.original.number ?? row.original.id}
+          </span>
+        ),
+      },
+      {
+        id: "amount",
+        header: "Amount",
+        cell: ({ row }) => (
+          <span className="tabular-nums text-sm">
+            {formatAmount(row.original.amount, row.original.currency)}
+          </span>
+        ),
+      },
+      {
+        id: "status",
+        header: "Status",
+        cell: ({ row }) => (
+          <span
+            className={cn(
+              "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium capitalize",
+              statusBadgeClass(row.original.status),
+            )}
+            data-testid={`invoice-status-${row.original.id}`}
+          >
+            {row.original.status}
+          </span>
+        ),
+      },
+      {
+        id: "period",
+        header: "Period",
+        cell: ({ row }) => {
+          const start = formatDateShort(row.original.periodStart)
+          const end = formatDateShort(row.original.periodEnd)
+          if (start === "-" && end === "-") {
+            return <span className="text-xs text-muted-foreground">-</span>
+          }
+          return (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {start} - {end}
+            </span>
+          )
+        },
+      },
+      {
+        id: "createdAt",
+        header: "Date",
+        cell: ({ row }) => (
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {formatDateShort(row.original.createdAt)}
+          </span>
+        ),
+      },
+      {
+        id: "actions",
+        header: "",
+        cell: ({ row }) => (
+          <div className="flex items-center justify-end gap-2">
+            {row.original.hostedInvoiceUrl ? (
+              <a
+                href={row.original.hostedInvoiceUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                data-testid={`invoice-view-${row.original.id}`}
+              >
+                View
+                <ExternalLinkIcon className="size-3" />
+              </a>
+            ) : null}
+            {row.original.invoicePdfUrl ? (
+              <a
+                href={row.original.invoicePdfUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                data-testid={`invoice-pdf-${row.original.id}`}
+              >
+                PDF
+              </a>
+            ) : null}
+          </div>
+        ),
+      },
+    ],
+    [],
+  )
+
+  return (
+    <Card data-testid="invoices-card">
+      <CardHeader>
+        <CardTitle>Invoices</CardTitle>
+        <CardDescription>
+          Past Stripe invoices for this workspace.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <DataTable<Invoice>
+          columns={columns}
+          data={items}
+          isLoading={invoicesQ.isLoading}
+          emptyState={
+            invoicesQ.isError ? (
+              <span className="text-red-600 dark:text-red-400">
+                Could not load invoices.
+              </span>
+            ) : (
+              "No invoices yet. Your first invoice will appear after your trial converts."
+            )
+          }
+        />
+      </CardContent>
+    </Card>
   )
 }
 

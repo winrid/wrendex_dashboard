@@ -44,6 +44,19 @@ export type DownloadCsvOptions = {
   windowImpl?: typeof window
 }
 
+/** Thrown by downloadBlob when the BE returns a non-2xx response. Preserves
+ *  the HTTP status so callers can branch (e.g. on 403 plan-gate -> upgrade
+ *  toast) without having to re-parse the message. */
+export class DownloadError extends Error {
+  readonly status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = "DownloadError"
+    this.status = status
+  }
+}
+
 /**
  * Authenticated download of a server-generated file (CSV by default).
  * Fetches the URL with the global Bearer token, reads the response as a
@@ -56,20 +69,52 @@ export async function downloadCsv(
   filename: string,
   opts: DownloadCsvOptions = {},
 ): Promise<void> {
+  await downloadBlob(url, filename, opts, "text/csv, application/octet-stream, */*")
+}
+
+/**
+ * Authenticated download of an arbitrary server-generated file. Identical
+ * mechanics to downloadCsv but accepts any Accept type and throws a
+ * DownloadError that preserves the HTTP status so callers can branch on
+ * 403 plan-gate / 401 session-expired etc. without re-parsing the message.
+ */
+export async function downloadFile(
+  url: string,
+  filename: string,
+  opts: DownloadCsvOptions & { accept?: string } = {},
+): Promise<void> {
+  const accept = opts.accept ?? "application/octet-stream, */*"
+  await downloadBlob(url, filename, opts, accept)
+}
+
+/** Convenience wrapper for PDF downloads (plan section 12.2). Uses the
+ *  PDF Accept header so the BE can content-negotiate when a single endpoint
+ *  serves multiple formats. */
+export async function downloadPdf(
+  url: string,
+  filename: string,
+  opts: DownloadCsvOptions = {},
+): Promise<void> {
+  await downloadBlob(url, filename, opts, "application/pdf")
+}
+
+async function downloadBlob(
+  url: string,
+  filename: string,
+  opts: DownloadCsvOptions,
+  accept: string,
+): Promise<void> {
   const fetchImpl = opts.fetchImpl ?? globalThis.fetch.bind(globalThis)
   const win = opts.windowImpl ?? (typeof window !== "undefined" ? window : undefined)
 
-  const headers: Record<string, string> = {
-    Accept: "text/csv, application/octet-stream, */*",
-  }
+  const headers: Record<string, string> = { Accept: accept }
   const token = getAuthToken()
   if (token) headers.Authorization = `Bearer ${token}`
 
   const res = await fetchImpl(url, { method: "GET", headers })
   if (!res.ok) {
-    throw new Error(
-      `Download failed (${res.status} ${res.statusText || "error"})`,
-    )
+    const message = `Download failed (${res.status} ${res.statusText || "error"})`
+    throw new DownloadError(res.status, message)
   }
 
   const blob = await res.blob()

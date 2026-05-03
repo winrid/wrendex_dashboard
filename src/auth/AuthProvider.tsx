@@ -19,7 +19,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { ApiError, clearTelemetrySessionId } from "@/api/client"
+import { ApiError, clearTelemetrySessionId, isApiError } from "@/api/client"
 import { setAuthToken, useApiClient } from "@/api/useApiClient"
 import type {
   AnonymousCrawlClaimResponse,
@@ -27,6 +27,7 @@ import type {
   AuthSignupRequest,
   Me,
   Membership,
+  TenantBranding,
   User,
 } from "@/api/types"
 
@@ -71,6 +72,11 @@ export type AuthContextValue = {
   activeTenantId: string | null
   isLoading: boolean
   isAuthed: boolean
+  /** Active tenant's branding (white-label, plan section 12.3). null while
+   *  loading or when the tenant has never customised. The provider eagerly
+   *  applies the accent colour to document.documentElement so consumers
+   *  rarely need to read this directly. */
+  branding: TenantBranding | null
   signup: (input: AuthSignupRequest) => Promise<void>
   /** Same as signup() but optionally also claims an anonymous crawl into
    *  the freshly-created tenant. Returns the tenantId so the caller can
@@ -98,6 +104,7 @@ export function AuthProvider({ children, skipBootstrap = false }: AuthProviderPr
   const [memberships, setMemberships] = useState<Membership[]>([])
   const [activeTenantId, setActiveTenantIdState] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState<boolean>(!skipBootstrap)
+  const [branding, setBranding] = useState<TenantBranding | null>(null)
   const didBootstrap = useRef(false)
 
   const applyMe = useCallback((me: Me) => {
@@ -112,12 +119,56 @@ export function AuthProvider({ children, skipBootstrap = false }: AuthProviderPr
     setUser(null)
     setMemberships([])
     setActiveTenantIdState(null)
+    setBranding(null)
     setAuthToken(null)
     writeStoredToken(null)
     // Drop the funnel-telemetry sessionId on logout so the next signed-in
     // user starts a fresh attribution window (plan section 16).
     clearTelemetrySessionId()
+    // Reset any branding-driven CSS vars so the login screen renders against
+    // the default Wrendex palette, not the previous tenant's accent.
+    if (typeof document !== "undefined") {
+      document.documentElement.style.removeProperty("--brand-accent")
+    }
   }, [])
+
+  // Apply the active tenant's branding to document.documentElement whenever
+  // the tenant flips (or on first load). 404 / 403 are treated as "no
+  // branding"; other failures are swallowed so a flaky network never blocks
+  // the dashboard. Plan section 12.3 (white-label).
+  useEffect(() => {
+    if (!activeTenantId) {
+      setBranding(null)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const next = await client.getBranding(activeTenantId)
+        if (cancelled) return
+        setBranding(next)
+        if (typeof document !== "undefined" && next.accentColor) {
+          document.documentElement.style.setProperty(
+            "--brand-accent",
+            next.accentColor,
+          )
+        }
+      } catch (e) {
+        if (cancelled) return
+        if (isApiError(e) && (e.status === 404 || e.status === 403)) {
+          setBranding(null)
+          if (typeof document !== "undefined") {
+            document.documentElement.style.removeProperty("--brand-accent")
+          }
+          return
+        }
+        // Other errors: swallow; branding is non-critical.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [activeTenantId, client])
 
   // Hydrate on mount: if a token is in localStorage, push it into the client
   // and call /api/me. A 401 means the stored token is stale; clear it so the
@@ -235,6 +286,7 @@ export function AuthProvider({ children, skipBootstrap = false }: AuthProviderPr
       activeTenantId,
       isLoading,
       isAuthed: user !== null,
+      branding,
       signup,
       signupWithOptionalClaim,
       login,
@@ -246,6 +298,7 @@ export function AuthProvider({ children, skipBootstrap = false }: AuthProviderPr
       memberships,
       activeTenantId,
       isLoading,
+      branding,
       signup,
       signupWithOptionalClaim,
       login,
