@@ -513,7 +513,7 @@ opens the form.
 
 ## Phase 4 deferrals
 
-Three Phase 4 surfaces ship with intentional gaps. The FE shells exist (so
+Two Phase 4 surfaces ship with intentional gaps. The FE shells exist (so
 the marketing + sales motion can demo them) but the protocol / infra work
 that would make them fully usable lands in Phase 5+. Treat the items below
 as known-half-shipped; do not add escape-hatch UX without coordinating with
@@ -534,11 +534,17 @@ the BE.
   routing for the configured subdomain is Phase 5+ infra work; until then
   visitors must reach the dashboard via `app.wrendex.com`. The verification
   pill therefore reflects DNS health only, not end-to-end reachability.
-- **DIGEST_PERIOD CUSTOM trigger is intentionally unselectable.** The
-  custom-rule composer (SiteSettings -> Alert rules -> + Custom rule -> Step
-  1) omits the DIGEST_PERIOD option from its Trigger Select; cron-style
-  digest scheduling needs a proper cron evaluator on the BE which lands in
-  Phase 5+. The canned WEEKLY_DIGEST rule covers the only digest cadence
-  the BE actually fires today. The `AlertRuleTrigger` union still carries
-  DIGEST_PERIOD so any rules already persisted with that kind continue to
-  render; we just block new ones via the composer.
+
+## Code-splitting
+
+Every route is lazy-loaded via `React.lazy()` in `src/router.tsx` (P5 iter 1
+FE-A). The main entry chunk only carries `AppShell`, `RequireAuth`,
+`AuthProvider`, the typed client, and shared shell deps; per-route code +
+heavy dependencies (recharts, qrcode, framer-motion deep usage) follow their
+consumers into separate chunks. New routes added later should follow the
+same lazy-import pattern: define a `lazy(() => import("@/routes/X").then(m =>
+({default: m.X})))` next to the existing entries and reference it from the
+route table. Public routes use a shared `<PublicSuspenseLayout>` wrapper for
+their `<Suspense>` fallback; authenticated routes share a single `<Suspense>`
+inside `<AppShell>` around the nested `<Outlet />`. The fallback is
+`<RouteFallback />` from `src/components/layout/RouteFallback.tsx`.

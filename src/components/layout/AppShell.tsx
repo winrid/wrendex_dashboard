@@ -1,4 +1,4 @@
-import { useEffect } from "react"
+import { Suspense, useEffect } from "react"
 import {
   Link,
   NavLink,
@@ -7,6 +7,7 @@ import {
   useNavigate,
   useParams,
 } from "react-router-dom"
+import { RouteFallback } from "./RouteFallback"
 import { useQuery } from "@tanstack/react-query"
 import {
   Sidebar,
@@ -347,7 +348,13 @@ export function AppShell() {
           </div>
         </header>
         <main className="flex-1 overflow-y-auto p-6">
-          <Outlet />
+          {/* P5 iter 1 FE-A: every route under AppShell is React.lazy(), so
+              wrap the nested <Outlet /> in <Suspense> so navigations show a
+              skeleton while the destination chunk loads. The shell + sidebar
+              + topbar stay on screen throughout. */}
+          <Suspense fallback={<RouteFallback />}>
+            <Outlet />
+          </Suspense>
         </main>
       </SidebarInset>
       <CommandPalette />

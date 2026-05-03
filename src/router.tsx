@@ -1,99 +1,235 @@
-import { createBrowserRouter } from "react-router-dom"
+import { lazy, Suspense } from "react"
+import { createBrowserRouter, Outlet } from "react-router-dom"
 import { AppShell } from "@/components/layout/AppShell"
 import { RequireAuth } from "@/auth/RequireAuth"
-import { Sites } from "@/routes/Sites"
-import { SiteDetail } from "@/routes/SiteDetail"
-import { SpotAudit } from "@/routes/SpotAudit"
-import { CrawlHistory } from "@/routes/CrawlHistory"
-import { CrawlComparison } from "@/routes/CrawlComparison"
-import { NotificationLog } from "@/routes/NotificationLog"
-import { HealthHistory } from "@/routes/HealthHistory"
-import { LinkExplorer } from "@/routes/LinkExplorer"
-import { CrawlDetailComingSoon } from "@/routes/CrawlDetailComingSoon"
-import { IssueCategoryDetail } from "@/routes/IssueCategoryDetail"
-import { IssueTypeDetail } from "@/routes/IssueTypeDetail"
-import { PageExplorer } from "@/routes/PageExplorer"
-import { PageDetail } from "@/routes/PageDetail"
-import { RedirectsReport } from "@/routes/RedirectsReport"
-import { ResourcesReport } from "@/routes/ResourcesReport"
-import { StructureMap } from "@/routes/StructureMap"
-import { DuplicatesReport } from "@/routes/DuplicatesReport"
-import { StructuredDataReport } from "@/routes/StructuredDataReport"
-import { SiteInbox } from "@/routes/SiteInbox"
-import { Inbox } from "@/routes/Inbox"
-import { Reports } from "@/routes/Reports"
-import { Catalog } from "@/routes/Catalog"
-import { Schedule } from "@/routes/Schedule"
-import { Team } from "@/routes/Team"
-import { Billing } from "@/routes/Billing"
-import { Settings } from "@/routes/Settings"
-import { SiteSettings } from "@/routes/SiteSettings"
-import { Login } from "@/routes/Login"
-import { Signup } from "@/routes/Signup"
-import { ForgotPassword } from "@/routes/ForgotPassword"
-import { ResetPassword } from "@/routes/ResetPassword"
-import { RootRedirect } from "@/routes/RootRedirect"
-import { Audit } from "@/routes/Audit"
-import { AnonymousCrawlTeaser } from "@/routes/AnonymousCrawlTeaser"
-import { AnonymousCrawlClaiming } from "@/routes/AnonymousCrawlClaiming"
-import { Status } from "@/routes/Status"
-import { Changelog } from "@/routes/Changelog"
-import { AdminChangelog } from "@/routes/AdminChangelog"
-import { AcceptInvite } from "@/routes/AcceptInvite"
-import { SharedView } from "@/routes/SharedView"
+import { RouteFallback } from "@/components/layout/RouteFallback"
+
+// Route-level code-splitting (P5 iter 1 FE-A). Every route element is loaded
+// lazily so the main entry chunk only carries AppShell + RequireAuth +
+// AuthProvider + the typed client. Recharts, framer-motion, cmdk, qrcode etc.
+// follow their consumer routes into separate chunks. See AGENTS.md
+// "Code-splitting".
+//
+// Each route file uses a named export, so we adapt to React.lazy()'s default-
+// export contract via `.then(m => ({ default: m.X }))`. New routes added later
+// should follow the same pattern.
+
+const Sites = lazy(() =>
+  import("@/routes/Sites").then((m) => ({ default: m.Sites })),
+)
+const SiteDetail = lazy(() =>
+  import("@/routes/SiteDetail").then((m) => ({ default: m.SiteDetail })),
+)
+const SpotAudit = lazy(() =>
+  import("@/routes/SpotAudit").then((m) => ({ default: m.SpotAudit })),
+)
+const CrawlHistory = lazy(() =>
+  import("@/routes/CrawlHistory").then((m) => ({ default: m.CrawlHistory })),
+)
+const CrawlComparison = lazy(() =>
+  import("@/routes/CrawlComparison").then((m) => ({
+    default: m.CrawlComparison,
+  })),
+)
+const NotificationLog = lazy(() =>
+  import("@/routes/NotificationLog").then((m) => ({
+    default: m.NotificationLog,
+  })),
+)
+const HealthHistory = lazy(() =>
+  import("@/routes/HealthHistory").then((m) => ({ default: m.HealthHistory })),
+)
+const LinkExplorer = lazy(() =>
+  import("@/routes/LinkExplorer").then((m) => ({ default: m.LinkExplorer })),
+)
+const CrawlDetailComingSoon = lazy(() =>
+  import("@/routes/CrawlDetailComingSoon").then((m) => ({
+    default: m.CrawlDetailComingSoon,
+  })),
+)
+const IssueCategoryDetail = lazy(() =>
+  import("@/routes/IssueCategoryDetail").then((m) => ({
+    default: m.IssueCategoryDetail,
+  })),
+)
+const IssueTypeDetail = lazy(() =>
+  import("@/routes/IssueTypeDetail").then((m) => ({
+    default: m.IssueTypeDetail,
+  })),
+)
+const PageExplorer = lazy(() =>
+  import("@/routes/PageExplorer").then((m) => ({ default: m.PageExplorer })),
+)
+const PageDetail = lazy(() =>
+  import("@/routes/PageDetail").then((m) => ({ default: m.PageDetail })),
+)
+const RedirectsReport = lazy(() =>
+  import("@/routes/RedirectsReport").then((m) => ({
+    default: m.RedirectsReport,
+  })),
+)
+const ResourcesReport = lazy(() =>
+  import("@/routes/ResourcesReport").then((m) => ({
+    default: m.ResourcesReport,
+  })),
+)
+const StructureMap = lazy(() =>
+  import("@/routes/StructureMap").then((m) => ({ default: m.StructureMap })),
+)
+const DuplicatesReport = lazy(() =>
+  import("@/routes/DuplicatesReport").then((m) => ({
+    default: m.DuplicatesReport,
+  })),
+)
+const StructuredDataReport = lazy(() =>
+  import("@/routes/StructuredDataReport").then((m) => ({
+    default: m.StructuredDataReport,
+  })),
+)
+const SiteInbox = lazy(() =>
+  import("@/routes/SiteInbox").then((m) => ({ default: m.SiteInbox })),
+)
+const Inbox = lazy(() =>
+  import("@/routes/Inbox").then((m) => ({ default: m.Inbox })),
+)
+const Reports = lazy(() =>
+  import("@/routes/Reports").then((m) => ({ default: m.Reports })),
+)
+const Catalog = lazy(() =>
+  import("@/routes/Catalog").then((m) => ({ default: m.Catalog })),
+)
+const Schedule = lazy(() =>
+  import("@/routes/Schedule").then((m) => ({ default: m.Schedule })),
+)
+const Team = lazy(() =>
+  import("@/routes/Team").then((m) => ({ default: m.Team })),
+)
+const Billing = lazy(() =>
+  import("@/routes/Billing").then((m) => ({ default: m.Billing })),
+)
+const Settings = lazy(() =>
+  import("@/routes/Settings").then((m) => ({ default: m.Settings })),
+)
+const SiteSettings = lazy(() =>
+  import("@/routes/SiteSettings").then((m) => ({ default: m.SiteSettings })),
+)
+const Login = lazy(() =>
+  import("@/routes/Login").then((m) => ({ default: m.Login })),
+)
+const Signup = lazy(() =>
+  import("@/routes/Signup").then((m) => ({ default: m.Signup })),
+)
+const ForgotPassword = lazy(() =>
+  import("@/routes/ForgotPassword").then((m) => ({
+    default: m.ForgotPassword,
+  })),
+)
+const ResetPassword = lazy(() =>
+  import("@/routes/ResetPassword").then((m) => ({ default: m.ResetPassword })),
+)
+const RootRedirect = lazy(() =>
+  import("@/routes/RootRedirect").then((m) => ({ default: m.RootRedirect })),
+)
+const Audit = lazy(() =>
+  import("@/routes/Audit").then((m) => ({ default: m.Audit })),
+)
+const AnonymousCrawlTeaser = lazy(() =>
+  import("@/routes/AnonymousCrawlTeaser").then((m) => ({
+    default: m.AnonymousCrawlTeaser,
+  })),
+)
+const AnonymousCrawlClaiming = lazy(() =>
+  import("@/routes/AnonymousCrawlClaiming").then((m) => ({
+    default: m.AnonymousCrawlClaiming,
+  })),
+)
+const Status = lazy(() =>
+  import("@/routes/Status").then((m) => ({ default: m.Status })),
+)
+const Changelog = lazy(() =>
+  import("@/routes/Changelog").then((m) => ({ default: m.Changelog })),
+)
+const AdminChangelog = lazy(() =>
+  import("@/routes/AdminChangelog").then((m) => ({
+    default: m.AdminChangelog,
+  })),
+)
+const AcceptInvite = lazy(() =>
+  import("@/routes/AcceptInvite").then((m) => ({ default: m.AcceptInvite })),
+)
+const SharedView = lazy(() =>
+  import("@/routes/SharedView").then((m) => ({ default: m.SharedView })),
+)
+
+// Public-route layout: every public element is a lazy chunk, so wrap them in a
+// shared <Suspense> via an Outlet shell. Authenticated routes get their own
+// <Suspense> inside <AppShell> around the nested <Outlet> (kept eager so the
+// sidebar / topbar remain on screen during the per-route chunk fetch).
+function PublicSuspenseLayout() {
+  return (
+    <Suspense fallback={<RouteFallback />}>
+      <Outlet />
+    </Suspense>
+  )
+}
 
 // Public routes mount above RequireAuth so unauthenticated users can reach
 // them without being bounced to /login. Everything else lives inside the
 // guard, including the index redirect that resolves the active tenant from
 // /api/me (replaces the iter-1 placeholder "default" tenant).
 export const router = createBrowserRouter([
-  { path: "/login", element: <Login /> },
-  { path: "/signup", element: <Signup /> },
-  { path: "/forgot-password", element: <ForgotPassword /> },
-  { path: "/reset-password", element: <ResetPassword /> },
-  // Anonymous-crawl funnel (plan section 2.0 + 1.1 PATH A). Public; the
-  // /audit landing accepts ?url=... and posts startAnonymousCrawl. The
-  // teaser lives at /a/:token; /a/:token/claiming is the brief loading
-  // view shown after Signup auto-claims into the new tenant.
-  { path: "/audit", element: <Audit /> },
-  { path: "/a/:token", element: <AnonymousCrawlTeaser /> },
-  { path: "/a/:token/claiming", element: <AnonymousCrawlClaiming /> },
-  // Public status page (plan section 16). No tenant scope; mounted above
-  // RequireAuth so the marketing trust strip can deep-link unauthenticated
-  // visitors here.
-  { path: "/status", element: <Status /> },
-  // Public changelog page (plan section 13). PUBLIC. The bell on the
-  // AppShell handles unread badge clearing for signed-in users; this page
-  // is intentionally read-only.
-  { path: "/changelog", element: <Changelog /> },
-  // Internal admin-only changelog editor (plan section 13). AUTHENTICATED
-  // but not tenant-scoped because the changelog is per-instance, not per
-  // tenant. The BE returns 403 from listAdminChangelog when the caller is
-  // not staff; the FE renders "You don't have access" in that branch.
   {
-    path: "/admin/changelog",
-    element: (
-      <RequireAuth>
-        <AdminChangelog />
-      </RequireAuth>
-    ),
-  },
-  // Accept-invite landing page (plan section 14.2). PUBLIC; the recipient
-  // clicks the email link and lands here with ?token=... before they have
-  // signed in.
-  { path: "/accept-invite", element: <AcceptInvite /> },
-  // Public shared-view route (plan section P3 iter 2). PUBLIC; the recipient
-  // hits /shared/:token and the page resolves the share via the public POST
-  // /api/shared/{token}. Mounted above RequireAuth so anonymous viewers can
-  // load the view without bouncing through /login.
-  { path: "/shared/:token", element: <SharedView /> },
-  {
-    path: "/",
-    element: (
-      <RequireAuth>
-        <RootRedirect />
-      </RequireAuth>
-    ),
+    element: <PublicSuspenseLayout />,
+    children: [
+      { path: "/login", element: <Login /> },
+      { path: "/signup", element: <Signup /> },
+      { path: "/forgot-password", element: <ForgotPassword /> },
+      { path: "/reset-password", element: <ResetPassword /> },
+      // Anonymous-crawl funnel (plan section 2.0 + 1.1 PATH A). Public; the
+      // /audit landing accepts ?url=... and posts startAnonymousCrawl. The
+      // teaser lives at /a/:token; /a/:token/claiming is the brief loading
+      // view shown after Signup auto-claims into the new tenant.
+      { path: "/audit", element: <Audit /> },
+      { path: "/a/:token", element: <AnonymousCrawlTeaser /> },
+      { path: "/a/:token/claiming", element: <AnonymousCrawlClaiming /> },
+      // Public status page (plan section 16). No tenant scope; mounted above
+      // RequireAuth so the marketing trust strip can deep-link unauthenticated
+      // visitors here.
+      { path: "/status", element: <Status /> },
+      // Public changelog page (plan section 13). PUBLIC. The bell on the
+      // AppShell handles unread badge clearing for signed-in users; this page
+      // is intentionally read-only.
+      { path: "/changelog", element: <Changelog /> },
+      // Internal admin-only changelog editor (plan section 13). AUTHENTICATED
+      // but not tenant-scoped because the changelog is per-instance, not per
+      // tenant. The BE returns 403 from listAdminChangelog when the caller is
+      // not staff; the FE renders "You don't have access" in that branch.
+      {
+        path: "/admin/changelog",
+        element: (
+          <RequireAuth>
+            <AdminChangelog />
+          </RequireAuth>
+        ),
+      },
+      // Accept-invite landing page (plan section 14.2). PUBLIC; the recipient
+      // clicks the email link and lands here with ?token=... before they have
+      // signed in.
+      { path: "/accept-invite", element: <AcceptInvite /> },
+      // Public shared-view route (plan section P3 iter 2). PUBLIC; the recipient
+      // hits /shared/:token and the page resolves the share via the public POST
+      // /api/shared/{token}. Mounted above RequireAuth so anonymous viewers can
+      // load the view without bouncing through /login.
+      { path: "/shared/:token", element: <SharedView /> },
+      {
+        path: "/",
+        element: (
+          <RequireAuth>
+            <RootRedirect />
+          </RequireAuth>
+        ),
+      },
+    ],
   },
   {
     path: "/t/:tenantId",

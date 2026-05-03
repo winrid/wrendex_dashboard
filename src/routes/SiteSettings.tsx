@@ -568,14 +568,13 @@ function AlertRuleRow({
 // enabled: true, params}).
 // ---------------------------------------------------------------------------
 
-// DIGEST_PERIOD is intentionally omitted from the user-selectable trigger
-// kinds: cron-style digest scheduling lands in Phase 5+ once the BE has a
-// proper cron evaluator. Until then, the canned WEEKLY_DIGEST rule covers
-// the only digest cadence the BE actually fires. See AGENTS.md "Phase 4
-// deferrals". The `AlertRuleTrigger` union still carries DIGEST_PERIOD so
-// any rules already persisted with that kind continue to render.
+// All four trigger kinds are user-selectable. DIGEST_PERIOD was deferred at
+// the end of Phase 4 (no cron evaluator on the BE) but P5 iter 1 BE-A wires
+// up a real scheduler, so the composer surfaces it again. The cron Select
+// (DAILY / WEEKLY / MONTHLY) renders below the kind Select when DIGEST_PERIOD
+// is chosen.
 const TRIGGER_KIND_OPTIONS: {
-  value: Exclude<AlertRuleTrigger["kind"], "DIGEST_PERIOD">
+  value: AlertRuleTrigger["kind"]
   label: string
   description: string
 }[] = [
@@ -597,6 +596,17 @@ const TRIGGER_KIND_OPTIONS: {
     description:
       "Fire when the total matching-alert count crosses a configured value.",
   },
+  {
+    value: "DIGEST_PERIOD",
+    label: "On a recurring schedule",
+    description: "DAILY, WEEKLY, or MONTHLY digest of matching alerts.",
+  },
+]
+
+const DIGEST_CRON_OPTIONS: { value: "DAILY" | "WEEKLY" | "MONTHLY"; label: string }[] = [
+  { value: "DAILY", label: "Daily" },
+  { value: "WEEKLY", label: "Weekly" },
+  { value: "MONTHLY", label: "Monthly" },
 ]
 
 const TRIGGER_OP_OPTIONS: AlertRuleTriggerOp[] = ["<", "<=", ">", ">="]
@@ -893,6 +903,36 @@ function TriggerStep({
         </div>
       ) : null}
 
+      {trigger.kind === "DIGEST_PERIOD" ? (
+        <div className="space-y-1.5">
+          <Label htmlFor="trigger-cron">Cadence</Label>
+          <Select
+            value={trigger.cron}
+            onValueChange={(v) =>
+              onChange({
+                kind: "DIGEST_PERIOD",
+                cron: v as "DAILY" | "WEEKLY" | "MONTHLY",
+              })
+            }
+          >
+            <SelectTrigger
+              id="trigger-cron"
+              className="w-40"
+              data-testid="trigger-digest-cron"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DIGEST_CRON_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
+
       {trigger.kind === "ALERT_COUNT_THRESHOLD" ? (
         <div className="flex flex-wrap items-end gap-2">
           <div className="space-y-1">
@@ -967,13 +1007,6 @@ function TriggerStep({
         </div>
       ) : null}
 
-      <p
-        className="rounded-md border border-muted-foreground/20 bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
-        data-testid="digest-period-note"
-      >
-        Cron-style digest scheduling lands in Phase 5+; use the canned Weekly
-        digest rule for now.
-      </p>
     </div>
   )
 }

@@ -4,6 +4,7 @@
 //      button stays disabled until the URL matches.
 //   3. Toggling NEW_ERROR off calls updateAlertRule with {enabled: false}.
 
+import React from "react"
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
 import { cleanup, fireEvent, render, screen, waitFor, act } from "@testing-library/react"
 
@@ -100,6 +101,102 @@ vi.mock("@/api/useApiClient", () => ({
     getBilling,
   }),
 }))
+
+// Radix Select doesn't open in jsdom (no real PointerEvents / popover layer),
+// so we replace it with a tiny native <select>-backed implementation for these
+// tests. The mock keeps the same API surface used by SiteSettings (Root,
+// Trigger, Content, Item, Value) plus a forwarded data-testid on Trigger so
+// the existing tests that read Trigger by testid keep working.
+vi.mock("@/components/ui/select", () => {
+  type ItemDescriptor = { value: string; label: React.ReactNode }
+  function collectItems(node: React.ReactNode, out: ItemDescriptor[]): void {
+    React.Children.forEach(node, (child) => {
+      if (!React.isValidElement(child)) return
+      const c = child as React.ReactElement<{
+        value?: string
+        children?: React.ReactNode
+      }>
+      if (
+        typeof c.type === "function" &&
+        (c.type as { displayName?: string }).displayName === "SelectItem"
+      ) {
+        if (typeof c.props.value === "string") {
+          out.push({ value: c.props.value, label: c.props.children })
+        }
+        return
+      }
+      if (c.props && c.props.children !== undefined) {
+        collectItems(c.props.children, out)
+      }
+    })
+  }
+  function Select({
+    value,
+    defaultValue,
+    onValueChange,
+    children,
+    disabled,
+  }: {
+    value?: string
+    defaultValue?: string
+    onValueChange?: (next: string) => void
+    children?: React.ReactNode
+    disabled?: boolean
+  }) {
+    const items: ItemDescriptor[] = []
+    collectItems(children, items)
+    let triggerProps: Record<string, unknown> = {}
+    React.Children.forEach(children, (child) => {
+      if (!React.isValidElement(child)) return
+      const c = child as React.ReactElement<Record<string, unknown>>
+      if (
+        typeof c.type === "function" &&
+        (c.type as { displayName?: string }).displayName === "SelectTrigger"
+      ) {
+        triggerProps = { ...c.props }
+      }
+    })
+    const id =
+      typeof triggerProps.id === "string" ? triggerProps.id : undefined
+    const testid =
+      typeof triggerProps["data-testid"] === "string"
+        ? (triggerProps["data-testid"] as string)
+        : undefined
+    return (
+      <select
+        id={id}
+        data-testid={testid}
+        value={value ?? defaultValue ?? items[0]?.value ?? ""}
+        disabled={disabled}
+        onChange={(e) => onValueChange?.(e.target.value)}
+      >
+        {items.map((it) => (
+          <option key={it.value} value={it.value}>
+            {typeof it.label === "string" ? it.label : it.value}
+          </option>
+        ))}
+      </select>
+    )
+  }
+  function SelectTrigger(_: { children?: React.ReactNode }) {
+    return null
+  }
+  ;(SelectTrigger as { displayName?: string }).displayName = "SelectTrigger"
+  function SelectContent({ children }: { children?: React.ReactNode }) {
+    return <>{children}</>
+  }
+  function SelectItem({ children }: { children?: React.ReactNode; value: string }) {
+    return <>{children}</>
+  }
+  ;(SelectItem as { displayName?: string }).displayName = "SelectItem"
+  function SelectValue() {
+    return null
+  }
+  function SelectGroup({ children }: { children?: React.ReactNode }) {
+    return <>{children}</>
+  }
+  return { Select, SelectTrigger, SelectContent, SelectItem, SelectValue, SelectGroup }
+})
 
 import { SiteSettings } from "../SiteSettings"
 
@@ -308,7 +405,19 @@ describe("SiteSettings - custom rule composer", () => {
     expect(args[1].params.name).toBe("My rule")
   })
 
-  it("omits DIGEST_PERIOD from the composer trigger options and surfaces the deferral note", async () => {
+  it("submits a DIGEST_PERIOD CUSTOM rule with the chosen cron when the trigger kind is switched", async () => {
+    createCustomAlertRule.mockResolvedValue({
+      id: "r_custom_digest",
+      siteId: "s_1",
+      kind: "CUSTOM",
+      enabled: true,
+      params: {
+        trigger: { kind: "DIGEST_PERIOD", cron: "WEEKLY" },
+      },
+      createdAt: "2026-05-03T00:00:00Z",
+      updatedAt: "2026-05-03T00:00:00Z",
+    })
+
     renderRoute()
 
     // Open the composer dialog.
@@ -317,17 +426,48 @@ describe("SiteSettings - custom rule composer", () => {
       fireEvent.click(screen.getByTestId("open-custom-rule-composer"))
     })
 
-    // The composer mounts on Step 1 (Trigger). The Phase 4 deferral note
-    // sits inline on Step 1 explaining where DIGEST_PERIOD went.
-    const note = await screen.findByTestId("digest-period-note")
-    expect(note.textContent ?? "").toMatch(/Cron-style digest scheduling/i)
-    expect(note.textContent ?? "").toMatch(/Weekly digest/i)
+    // Step 1 - switch the trigger kind to DIGEST_PERIOD. The shared mocked
+    // Select (defined at module scope above) renders as a native <select>
+    // that exposes the data-testid we hand to SelectTrigger.
+    const triggerKind = (await screen.findByTestId(
+      "trigger-kind-select",
+    )) as HTMLSelectElement
+    await act(async () => {
+      fireEvent.change(triggerKind, { target: { value: "DIGEST_PERIOD" } })
+    })
 
-    // The trigger-kind Select still sits on the page but DIGEST_PERIOD is
-    // no longer one of its options; the click-to-expand affordance for the
-    // shadcn Select isn't trivial in jsdom, so we instead assert the
-    // marketing copy for the dropped option is nowhere on the screen.
-    expect(screen.queryByText(/On a recurring schedule/i)).toBeNull()
+    // The cron sub-Select renders only when DIGEST_PERIOD is the active kind.
+    const cronSelect = await screen.findByTestId("trigger-digest-cron")
+    expect(cronSelect).toBeTruthy()
+
+    // Step 1 -> Step 2 -> Step 3 -> Step 4. Take the defaults at each step
+    // (the cron defaults to WEEKLY).
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("composer-next"))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("composer-next"))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("composer-next"))
+    })
+
+    const submit = await screen.findByTestId("composer-submit")
+    await act(async () => {
+      fireEvent.click(submit)
+    })
+
+    await waitFor(() => {
+      expect(createCustomAlertRule).toHaveBeenCalledTimes(1)
+    })
+
+    const args = createCustomAlertRule.mock.calls[0]
+    expect(args[0]).toBe("s_1")
+    expect(args[1].enabled).toBe(true)
+    expect(args[1].params.trigger).toEqual({
+      kind: "DIGEST_PERIOD",
+      cron: "WEEKLY",
+    })
   })
 
   it("renders the Delete button only on CUSTOM rules and confirms deletion", async () => {
