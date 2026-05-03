@@ -1,11 +1,14 @@
-// Login SSO button (P4 iter 4 FE-D). Asserts:
+// Login SSO button (P4 iter 4 FE-D + P5 iter 2 FE-B). Asserts:
 //   1. Clicking the "Sign in with SSO" button opens the workspace prompt.
 //   2. Submitting the prompt with a tenant id navigates the browser to
 //      the SP-initiated login endpoint with returnTo set to the current
 //      origin.
-//   3. When the URL carries ?error=saml-not-implemented (Phase 4 deferral)
-//      the page surfaces the inline banner and strips the param via
-//      history.replaceState so a refresh doesn't re-toast.
+//   3. When the URL carries ?error=<saml-code> the page surfaces the
+//      matching friendly inline banner and strips the param via
+//      history.replaceState so a refresh doesn't re-toast. Covers the
+//      legacy saml-not-implemented code (defensive) and the new real-
+//      protocol codes saml-signature-invalid + saml-replay shipped in
+//      P5 iter 2 BE.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
@@ -131,10 +134,13 @@ describe("Login SSO button", () => {
     expect(assignedHref).toBeNull()
   })
 
-  it("surfaces the saml-not-implemented banner and strips the error param when present", async () => {
-    // Override the location so href reflects the BE-bounced query param.
-    let currentHref = "http://localhost:5173/login?error=saml-not-implemented"
-    let currentSearch = "?error=saml-not-implemented"
+  // Shared driver: shim window.location to look like the BE bounced the
+  // user back to /login?error=<code>, render Login, then return both the
+  // banner and the replaceState side-effect tracking so each error-code
+  // test can assert message + param-strip uniformly.
+  const runErrorParamCase = async (code: string) => {
+    let currentHref = `http://localhost:5173/login?error=${code}`
+    let currentSearch = `?error=${code}`
     let currentPathname = "/login"
     let replaceCalled = false
     Object.defineProperty(window, "location", {
@@ -167,7 +173,6 @@ describe("Login SSO button", () => {
     ) => {
       replaceCalled = true
       if (typeof url === "string") {
-        // Update our shimmed location so subsequent reads see the cleaned URL.
         currentHref = `http://localhost:5173${url}`
         const q = url.includes("?") ? url.slice(url.indexOf("?")) : ""
         currentSearch = q
@@ -178,14 +183,38 @@ describe("Login SSO button", () => {
 
     try {
       renderLogin()
-
-      const banner = await screen.findByTestId("sso-not-implemented-banner")
-      expect(banner.textContent ?? "").toMatch(/SSO sign-in is not yet/i)
-      expect(replaceCalled).toBe(true)
-      // The cleaned URL should no longer contain the error param.
-      expect(currentSearch.includes("error=saml-not-implemented")).toBe(false)
+      const banner = await screen.findByTestId("sso-error-banner")
+      return {
+        bannerText: banner.textContent ?? "",
+        replaceCalled: () => replaceCalled,
+        currentSearch: () => currentSearch,
+      }
     } finally {
       window.history.replaceState = originalReplaceState
     }
+  }
+
+  it("surfaces the saml-not-implemented banner and strips the error param when present", async () => {
+    const r = await runErrorParamCase("saml-not-implemented")
+    expect(r.bannerText).toMatch(/SSO sign-in is not yet/i)
+    expect(r.replaceCalled()).toBe(true)
+    expect(r.currentSearch().includes("error=saml-not-implemented")).toBe(false)
+  })
+
+  it("surfaces the saml-signature-invalid message and strips the error param", async () => {
+    const r = await runErrorParamCase("saml-signature-invalid")
+    expect(r.bannerText).toMatch(/could not be verified/i)
+    expect(r.bannerText).toMatch(/signing certificate/i)
+    expect(r.replaceCalled()).toBe(true)
+    expect(r.currentSearch().includes("error=saml-signature-invalid")).toBe(
+      false,
+    )
+  })
+
+  it("surfaces the saml-replay message and strips the error param", async () => {
+    const r = await runErrorParamCase("saml-replay")
+    expect(r.bannerText).toMatch(/already been used/i)
+    expect(r.replaceCalled()).toBe(true)
+    expect(r.currentSearch().includes("error=saml-replay")).toBe(false)
   })
 })

@@ -103,6 +103,27 @@ function describeInviteError(status: number): string {
   }
 }
 
+// SSO error codes the BE redirects back to /login?error=<code> with after a
+// failed SAML flow. P5 iter 2 BE wired real protocol via OneLogin java-saml;
+// the legacy `saml-not-implemented` code stays mapped defensively even though
+// the BE no longer emits it. Keep the friendly copy here in sync with
+// AGENTS.md "Custom subdomain + SAML SSO" section so the next eng knows
+// which strings to look for in test fixtures.
+const SSO_ERROR_MESSAGES: Record<string, string> = {
+  "saml-signature-invalid":
+    "Your SSO sign-in could not be verified. Contact your IdP admin and confirm the signing certificate matches the one configured in Wrendex.",
+  "saml-issuer-unknown":
+    "The SSO sign-in came from an unknown identity provider. Verify the IdP entity ID configured in Wrendex matches your IdP.",
+  "saml-replay":
+    "This SSO sign-in link has already been used. Please start over.",
+  "saml-expired":
+    "This SSO sign-in expired before it reached us. Please try again.",
+  "saml-missing-email":
+    "Your IdP did not send your email address. Ask your admin to map an email attribute to the SAML response.",
+  "saml-not-implemented":
+    "SSO sign-in is not yet available; please use email + password while we finalise the SAML release.",
+}
+
 export function Login() {
   const auth = useAuth()
   const client = useApiClient()
@@ -131,20 +152,21 @@ export function Login() {
   const [ssoWorkspace, setSsoWorkspace] = useState("")
   const [ssoError, setSsoError] = useState<string | null>(null)
 
-  // SSO not-implemented banner (Phase 4 deferral). The SAML protocol /login
-  // and /acs routes 501 today; when the BE bounces the user back here it
-  // appends ?error=saml-not-implemented so we can surface a friendly toast +
-  // inline banner instead of a stale-page silence. Strip the param once
-  // surfaced so a refresh doesn't re-toast.
-  const [ssoNotAvailable, setSsoNotAvailable] = useState(false)
+  // SSO error banner. After a failed SAML flow the BE 302s back to
+  // /login?error=<code>; we map each known code to a friendly message via
+  // SSO_ERROR_MESSAGES, surface it as both an inline Alert and a toast on
+  // mount, then strip the param via history.replaceState so a refresh
+  // doesn't re-toast. Unknown error codes are ignored (no banner) so a
+  // stray query param can't fake an error state.
+  const [ssoErrorMessage, setSsoErrorMessage] = useState<string | null>(null)
   useEffect(() => {
     if (typeof window === "undefined") return
     const url = new URL(window.location.href)
-    if (url.searchParams.get("error") === "saml-not-implemented") {
-      setSsoNotAvailable(true)
-      toast.error(
-        "SSO sign-in is not yet available; please use email + password while we finalise the SAML release.",
-      )
+    const code = url.searchParams.get("error")
+    if (code && Object.prototype.hasOwnProperty.call(SSO_ERROR_MESSAGES, code)) {
+      const message = SSO_ERROR_MESSAGES[code]
+      setSsoErrorMessage(message)
+      toast.error(message)
       url.searchParams.delete("error")
       const next =
         url.pathname +
@@ -389,15 +411,12 @@ export function Login() {
             </form>
           ) : (
             <form className="space-y-4" onSubmit={onSubmit} noValidate>
-              {ssoNotAvailable ? (
+              {ssoErrorMessage ? (
                 <Alert
                   variant="destructive"
-                  data-testid="sso-not-implemented-banner"
+                  data-testid="sso-error-banner"
                 >
-                  <AlertDescription>
-                    SSO sign-in is not yet available; please use email +
-                    password while we finalise the SAML release.
-                  </AlertDescription>
+                  <AlertDescription>{ssoErrorMessage}</AlertDescription>
                 </Alert>
               ) : null}
               <div className="space-y-1.5">
@@ -480,8 +499,8 @@ export function Login() {
           <DialogHeader>
             <DialogTitle>Sign in with SSO</DialogTitle>
             <DialogDescription>
-              Enter your workspace id or URL. We'll redirect you to your
-              identity provider to complete sign-in.
+              Enter your workspace id or URL. We'll send you to your
+              identity provider's sign-in page.
             </DialogDescription>
           </DialogHeader>
           <form

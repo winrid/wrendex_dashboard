@@ -340,6 +340,24 @@ report's CSV path) rather than in the typed client.
   `TenantBranding` gains `customSubdomain`, `customSubdomainVerifiedAt`,
   `lastDnsCheckAt`, `lastDnsCheckResult`.
 
+- **SSO error codes the dashboard handles.** When the SAML flow fails the
+  BE 302s the browser back to `/login?error=<code>`. `Login.tsx` keeps a
+  `SSO_ERROR_MESSAGES` map keyed by code and surfaces the matching message
+  as both an inline destructive Alert (data-testid `sso-error-banner`) and
+  a sonner toast on mount, then strips the param via
+  `history.replaceState` so a refresh doesn't re-toast. The codes the FE
+  knows about (next eng: search test fixtures for these strings):
+  - `saml-signature-invalid` - signing certificate mismatch / forged response.
+  - `saml-issuer-unknown` - IdP entity ID does not match tenant config.
+  - `saml-replay` - SAMLResponse already consumed (replay protection hit).
+  - `saml-expired` - assertion expired before reaching the SP /acs.
+  - `saml-missing-email` - IdP did not map an email attribute.
+  - `saml-not-implemented` - legacy from the P4 stub; defensive only,
+    the BE no longer emits it as of P5 iter 2.
+  Unknown codes are intentionally ignored (no banner) so a stray query
+  param can't fake an error state. Add a new entry to
+  `SSO_ERROR_MESSAGES` in `Login.tsx` when a new BE error code lands.
+
 ## White-label branding flow (sec 12.3)
 
 Per-tenant branding (logo, accent colour, "from name", hide
@@ -513,20 +531,11 @@ opens the form.
 
 ## Phase 4 deferrals
 
-Two Phase 4 surfaces ship with intentional gaps. The FE shells exist (so
-the marketing + sales motion can demo them) but the protocol / infra work
-that would make them fully usable lands in Phase 5+. Treat the items below
-as known-half-shipped; do not add escape-hatch UX without coordinating with
-the BE.
+One Phase 4 surface still ships with an intentional gap. The FE shell exists
+(so the marketing + sales motion can demo it) but the infra work that would
+make it fully usable lands in Phase 5+. Treat the item below as known-half-
+shipped; do not add escape-hatch UX without coordinating with the BE.
 
-- **SAML SSO protocol routes are 501 stubs.** The Settings -> Tenant ->
-  SAML SSO card persists the IdP fields and the Login -> "Sign in with SSO"
-  button hard-navigates to `/api/saml/sp/{tenantId}/login`, but the BE
-  /login + /acs handlers currently 501. The SSO button therefore dead-ends
-  for end users; the BE bounces the browser back to `/login?error=saml-not-implemented`,
-  and `Login.tsx` surfaces a toast + inline banner on mount and strips the
-  query param. Real SAML protocol handling (request signing, IdP redirect,
-  SAMLResponse verification) lands in Phase 5+ on top of a hardened library.
 - **Custom subdomain UI configures CNAME pointers only.** The Settings ->
   Tenant -> Custom subdomain card stores the customer's chosen subdomain
   and verifies the CNAME points at wrendex.com via
