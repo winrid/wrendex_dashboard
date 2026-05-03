@@ -31,6 +31,7 @@ import type {
   CrawlRun,
   CreateApiTokenInput,
   CreateApiTokenResponse,
+  CreateAlertRuleInput,
   CreateChangelogEntryInput,
   CreateCheckoutSessionInput,
   CreateCheckoutSessionResponse,
@@ -40,6 +41,7 @@ import type {
   CreateShareLinkInput,
   CreateSiteInput,
   CreateTenantInput,
+  CustomAlertRuleParams,
   DirectoryNode,
   DuplicatesResult,
   EmailChannel,
@@ -74,6 +76,9 @@ import type {
   ResolveShareInput,
   ResourcesResult,
   SavedView,
+  SearchParams,
+  SearchResponse,
+  SearchResult,
   Setup2faResponse,
   SetupIntent,
   ShareLink,
@@ -798,6 +803,47 @@ export function createApiClient(opts: CreateApiClientOptions) {
     )
   }
 
+  /** POST /api/sites/{siteId}/alert-rules. The BE only accepts CUSTOM-kind
+   *  rules through this endpoint; the three canned rules (NEW_ERROR,
+   *  SCORE_DROP, WEEKLY_DIGEST) are auto-seeded on first listAlertRules
+   *  call and edited via updateAlertRule. The composer in SiteSettings
+   *  builds the params shape via the CustomAlertRuleParams type. */
+  function createAlertRule(
+    siteId: string,
+    input: CreateAlertRuleInput,
+  ): Promise<AlertRule> {
+    return request<AlertRule>("POST", `/api/sites/${siteId}/alert-rules`, {
+      body: input,
+    })
+  }
+
+  /** Convenience wrapper around createAlertRule for the CUSTOM-only path.
+   *  Forces kind=CUSTOM so callers don't have to repeat the discriminator. */
+  function createCustomAlertRule(
+    siteId: string,
+    input: { enabled: boolean; params: CustomAlertRuleParams },
+  ): Promise<AlertRule> {
+    return createAlertRule(siteId, {
+      kind: "CUSTOM",
+      enabled: input.enabled,
+      params: input.params,
+    })
+  }
+
+  /** DELETE /api/sites/{siteId}/alert-rules/{ruleId}. Returns 204. The BE
+   *  only allows deleting CUSTOM rules; the three canned rules return 409
+   *  / 403 (the FE hides the Delete button for canned rules so we never
+   *  hit that path in normal use). */
+  function deleteAlertRule(
+    siteId: string,
+    ruleId: string,
+  ): Promise<undefined> {
+    return request<undefined>(
+      "DELETE",
+      `/api/sites/${siteId}/alert-rules/${ruleId}`,
+    )
+  }
+
   // -------------------------------------------------------------------------
   // Email channel - EmailChannelController (plan section 8.2; iter 6 BE)
   // -------------------------------------------------------------------------
@@ -1413,6 +1459,25 @@ export function createApiClient(opts: CreateApiClientOptions) {
     )
   }
 
+  // -------------------------------------------------------------------------
+  // Global search (P4 iter 3 BE-C). Backed by GET /api/search?q=&tenantId=&
+  // limit=20. AUTH. Drives the cmd-K palette in the AppShell. The BE returns
+  // {items: SearchResult[]}; the typed client unwraps to the array so the
+  // calling code does not have to reach into .items. limit defaults to 20
+  // (matches the BE cap) when the caller omits it.
+  // -------------------------------------------------------------------------
+
+  async function search(params: SearchParams): Promise<SearchResult[]> {
+    const res = await request<SearchResponse>("GET", "/api/search", {
+      query: {
+        q: params.q,
+        tenantId: params.tenantId,
+        limit: params.limit ?? 20,
+      },
+    })
+    return res?.items ?? []
+  }
+
   return {
     // auth
     signup,
@@ -1485,6 +1550,9 @@ export function createApiClient(opts: CreateApiClientOptions) {
     // alert rules
     listAlertRules,
     updateAlertRule,
+    createAlertRule,
+    createCustomAlertRule,
+    deleteAlertRule,
     // email channel
     getEmailChannel,
     updateEmailChannel,
@@ -1555,6 +1623,8 @@ export function createApiClient(opts: CreateApiClientOptions) {
     deleteSavedView,
     // spot audits (P4 iter 1)
     startSpotAudit,
+    // global search (P4 iter 3 BE-C)
+    search,
   } as const
 }
 

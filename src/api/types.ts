@@ -886,14 +886,22 @@ export type CreatePortalSessionResponse = {
 }
 
 // ---------------------------------------------------------------------------
-// Alert rules (plan section 8.1; iter 6 BE). Three canned rules per site.
-// The BE auto-seeds them on first GET so the FE can render a stable list.
+// Alert rules (plan section 8.1; iter 6 BE). Three canned rules per site +
+// CUSTOM rules composed via the SiteSettings -> Alert rules dialog (P4 iter
+// 3 BE). The BE auto-seeds the three canned rules on first GET so the FE
+// always has a stable list to render; CUSTOM rules are user-created and can
+// be deleted (canned rules return 409/403 from DELETE).
 // ---------------------------------------------------------------------------
 
-export type AlertRuleKind = "NEW_ERROR" | "SCORE_DROP" | "WEEKLY_DIGEST"
+export type AlertRuleKind =
+  | "NEW_ERROR"
+  | "SCORE_DROP"
+  | "WEEKLY_DIGEST"
+  | "CUSTOM"
 
 /** Mirrors com.bigbug.model.AlertRule. params is a free-form bag of per-kind
- *  config (e.g. {threshold: 10} for SCORE_DROP). */
+ *  config (e.g. {threshold: 10} for SCORE_DROP, {trigger, filters, ...} for
+ *  CUSTOM). */
 export type AlertRule = {
   id: string
   siteId: string
@@ -907,6 +915,74 @@ export type AlertRule = {
 export type UpdateAlertRuleInput = {
   enabled?: boolean
   params?: Record<string, unknown>
+}
+
+/** Body for POST /api/sites/{siteId}/alert-rules. CUSTOM is the only kind
+ *  the create endpoint currently accepts; the three canned kinds are auto-
+ *  seeded by the BE on first listAlertRules call. */
+export type CreateAlertRuleInput = {
+  kind: AlertRuleKind
+  enabled: boolean
+  params: CustomAlertRuleParams | Record<string, unknown>
+}
+
+/** Operator literal for the threshold-based custom-rule triggers. */
+export type AlertRuleTriggerOp = "<" | ">" | "<=" | ">="
+
+/** Cron preset for DIGEST_PERIOD triggers; matches the BE's enum verbatim. */
+export type AlertRuleDigestCron = "DAILY" | "WEEKLY" | "MONTHLY"
+
+/** Discriminated union per CUSTOM trigger kind. The BE ignores fields that
+ *  don't apply to the supplied `kind`, but the FE keeps the per-kind shapes
+ *  narrow so the composer cannot submit nonsense. */
+export type AlertRuleTrigger =
+  | {
+      kind: "ALERT_FIRED"
+      /** When true, only fire on the very first occurrence of a given alert
+       *  type for the site. */
+      firstSeen?: boolean
+    }
+  | {
+      kind: "SCORE_THRESHOLD"
+      op: AlertRuleTriggerOp
+      value: number
+    }
+  | {
+      kind: "ALERT_COUNT_THRESHOLD"
+      severity?: Severity
+      op: AlertRuleTriggerOp
+      value: number
+    }
+  | {
+      kind: "DIGEST_PERIOD"
+      cron: AlertRuleDigestCron
+    }
+
+/** Optional filter bag for CUSTOM rules. Every field is optional; an empty
+ *  filters object matches every alert. */
+export type AlertRuleFilters = {
+  /** Category names from checkCatalog.getAllCategories(). */
+  categories?: string[]
+  /** AlertType literals (e.g. "TITLE_MISSING"). */
+  types?: (AlertType | string)[]
+  severities?: Severity[]
+  pageUrlContains?: string
+  /** Minimum number of distinct pages affected before the rule fires. */
+  minPagesAffected?: number
+}
+
+/** Params bag carried inside a CUSTOM AlertRule. The BE persists it as an
+ *  opaque map; the FE narrows it via this type for the composer dialog +
+ *  the typed-client createCustomAlertRule path. */
+export type CustomAlertRuleParams = {
+  trigger: AlertRuleTrigger
+  filters?: AlertRuleFilters
+  /** Optional human-readable name surfaced in the rule-list row header.
+   *  When omitted the FE falls back to a derived "trigger summary" string. */
+  name?: string
+  /** Optional channel narrowing; when omitted the rule fires on every
+   *  configured channel for the tenant. */
+  channels?: NotificationChannel[]
 }
 
 // ---------------------------------------------------------------------------
@@ -1675,4 +1751,37 @@ export type SharedLinkPayload = {
    *  may opt to return this discriminator. The dedicated 401 body is the
    *  primary signal; this is left here as documentation. */
   passwordRequired?: boolean
+}
+
+// ---------------------------------------------------------------------------
+// Global search (P4 iter 3 BE-C). Backed by GET /api/search?q=&tenantId=&
+// limit=20. Drives the cmd-K palette in the AppShell. The BE returns one
+// result row per match; the FE groups by `kind` for the rendered output.
+// ---------------------------------------------------------------------------
+
+export type SearchResultKind = "site" | "page" | "alert" | "check"
+
+/** A single global-search hit. `route` is a fully resolved dashboard URL
+ *  (already prefixed with /t/{tenantId}/...) the FE can hand straight to
+ *  React Router's navigate(). */
+export type SearchResult = {
+  kind: SearchResultKind
+  id: string
+  title: string
+  /** Short context snippet rendered as the secondary line in the palette
+   *  (URL fragment for sites/pages, alert message for alerts, description
+   *  for checks). */
+  snippet: string
+  route: string
+}
+
+export type SearchParams = {
+  q: string
+  tenantId: string
+  /** Default 20 (matches the BE cap). */
+  limit?: number
+}
+
+export type SearchResponse = {
+  items: SearchResult[]
 }

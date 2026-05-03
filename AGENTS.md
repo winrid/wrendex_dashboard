@@ -402,6 +402,37 @@ route by reading `listCrawlsBySite` (latest completed run wins), and
 navigates to the resolved URL. The destination route reads the handoff
 on mount via `consumePendingSavedView(route)` and applies it once.
 
+## Custom alert-rule composer (P4 iter 3)
+
+`/t/:tenantId/sites/:siteId/settings` -> Alert rules card. Below the three
+canned rules (NEW_ERROR / SCORE_DROP / WEEKLY_DIGEST), a "+ Custom rule"
+button opens a 4-step composer dialog (Trigger / Filters / Channels /
+Name+Review). Submit calls `createCustomAlertRule(siteId, {enabled: true,
+params})` which posts to `POST /api/sites/{siteId}/alert-rules` with
+`kind: "CUSTOM"`. The trigger union covers ALERT_FIRED, SCORE_THRESHOLD,
+ALERT_COUNT_THRESHOLD, and DIGEST_PERIOD; filters are optional (categories
+from `checkCatalog.getAllCategories()`, types autocomplete from
+`getAllChecks()`, severities, pageUrlContains, minPagesAffected); channels
+default to "all configured" when left empty. CUSTOM rules render with a
+Delete button that confirms via a dialog and calls `deleteAlertRule(siteId,
+ruleId)`; canned rules return 409/403 from the BE so the FE hides Delete
+on them entirely. New typed-client methods: `createAlertRule`,
+`createCustomAlertRule`, `deleteAlertRule`. New types in `src/api/types.ts`:
+`CustomAlertRuleParams`, `AlertRuleTrigger` (discriminated union),
+`AlertRuleFilters`, `CreateAlertRuleInput`.
+
+## cmd-K global search (P4 iter 3)
+
+`CommandPalette` (`src/components/layout/CommandPalette.tsx`) extends the
+nav-only Navigate group with a global-search surface. Typing into the input
+debounces 200ms then calls `client.search({q, tenantId, limit: 20})` (BE
+`GET /api/search`). Results are grouped by kind into Sites / Pages / Alerts
+/ Checks groups; each item renders title + snippet + an icon and clicking
+navigates to `result.route`. The Navigate group is always rendered at the
+bottom; when the query is empty only Navigate is shown (the original
+behaviour). New typed-client method: `search`. New types: `SearchResult`,
+`SearchResultKind`, `SearchParams`, `SearchResponse`.
+
 ## Spot-audit launcher (P4 iter 1)
 
 `/t/:tenantId/sites/:siteId/spot-audit` is a single-form route that POSTs

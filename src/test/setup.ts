@@ -38,3 +38,14 @@ if (
   ;(globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver =
     ResizeObserverStub
 }
+
+// cmdk + Radix call element.scrollIntoView() when items mount / the
+// selected row changes; jsdom doesn't implement it. The no-op stub keeps
+// the CommandPalette tests from blowing up during effect commits.
+if (
+  typeof globalThis !== "undefined" &&
+  typeof Element !== "undefined" &&
+  typeof Element.prototype.scrollIntoView !== "function"
+) {
+  Element.prototype.scrollIntoView = function scrollIntoView(): void {}
+}

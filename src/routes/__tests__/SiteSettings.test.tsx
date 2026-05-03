@@ -82,6 +82,8 @@ const getBilling = vi.fn().mockResolvedValue({
   trialEndsAt: "2026-05-14T00:00:00Z",
   hasPaymentMethod: true,
 })
+const createCustomAlertRule = vi.fn()
+const deleteAlertRule = vi.fn().mockResolvedValue(undefined)
 
 vi.mock("@/api/useApiClient", () => ({
   useApiClient: () => ({
@@ -90,6 +92,8 @@ vi.mock("@/api/useApiClient", () => ({
     updateSchedule,
     listAlertRules,
     updateAlertRule,
+    createCustomAlertRule,
+    deleteAlertRule,
     deleteSite,
     requestSiteVerification,
     confirmSiteVerification,
@@ -237,6 +241,116 @@ describe("SiteSettings - alert rules", () => {
       expect(updateAlertRule).toHaveBeenCalledWith("s_1", "r_1", {
         enabled: false,
       })
+    })
+  })
+})
+
+describe("SiteSettings - custom rule composer", () => {
+  it("steps through the four steps and submits a CUSTOM rule", async () => {
+    createCustomAlertRule.mockResolvedValue({
+      id: "r_custom_1",
+      siteId: "s_1",
+      kind: "CUSTOM",
+      enabled: true,
+      params: {
+        trigger: { kind: "ALERT_FIRED", firstSeen: false },
+        name: "My rule",
+      },
+      createdAt: "2026-05-03T00:00:00Z",
+      updatedAt: "2026-05-03T00:00:00Z",
+    })
+
+    renderRoute()
+
+    // Wait for the rules list to load + open the composer dialog.
+    await screen.findByTestId("alert-rule-switch-NEW_ERROR")
+    const openButton = screen.getByTestId("open-custom-rule-composer")
+    await act(async () => {
+      fireEvent.click(openButton)
+    })
+
+    // Step 1 (Trigger). Default kind is ALERT_FIRED; just click Next.
+    const next = await screen.findByTestId("composer-next")
+    await act(async () => {
+      fireEvent.click(next)
+    })
+
+    // Step 2 (Filters). Click Next without setting anything.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("composer-next"))
+    })
+
+    // Step 3 (Channels). Click Next without selecting any channel.
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("composer-next"))
+    })
+
+    // Step 4 (Review). Type a name + submit.
+    const nameInput = await screen.findByTestId("review-name")
+    fireEvent.change(nameInput, { target: { value: "My rule" } })
+
+    const submit = screen.getByTestId("composer-submit")
+    await act(async () => {
+      fireEvent.click(submit)
+    })
+
+    await waitFor(() => {
+      expect(createCustomAlertRule).toHaveBeenCalledTimes(1)
+    })
+
+    const args = createCustomAlertRule.mock.calls[0]
+    expect(args[0]).toBe("s_1")
+    expect(args[1].enabled).toBe(true)
+    expect(args[1].params.trigger).toEqual({
+      kind: "ALERT_FIRED",
+      firstSeen: false,
+    })
+    expect(args[1].params.name).toBe("My rule")
+  })
+
+  it("renders the Delete button only on CUSTOM rules and confirms deletion", async () => {
+    listAlertRules.mockResolvedValue([
+      {
+        id: "r_1",
+        siteId: "s_1",
+        kind: "NEW_ERROR",
+        enabled: true,
+        params: {},
+        createdAt: "2026-04-30T00:00:00Z",
+        updatedAt: "2026-04-30T00:00:00Z",
+      },
+      {
+        id: "r_custom_1",
+        siteId: "s_1",
+        kind: "CUSTOM",
+        enabled: true,
+        params: {
+          trigger: { kind: "ALERT_FIRED", firstSeen: false },
+          name: "My custom rule",
+        },
+        createdAt: "2026-05-03T00:00:00Z",
+        updatedAt: "2026-05-03T00:00:00Z",
+      },
+    ])
+
+    renderRoute()
+
+    // The custom-rule delete button is rendered (canned-rule rows do not
+    // get one - we only ever match the CUSTOM rule's id).
+    const deleteBtn = await screen.findByTestId(
+      "alert-rule-delete-r_custom_1",
+    )
+    await act(async () => {
+      fireEvent.click(deleteBtn)
+    })
+
+    const confirm = await screen.findByTestId("confirm-delete-custom-rule")
+    await act(async () => {
+      fireEvent.click(confirm)
+    })
+
+    await waitFor(() => {
+      expect(deleteAlertRule).toHaveBeenCalledWith("s_1", "r_custom_1")
     })
   })
 })
