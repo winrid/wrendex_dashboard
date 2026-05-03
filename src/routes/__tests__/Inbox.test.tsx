@@ -14,6 +14,13 @@ const listSitesByTenant = vi.fn()
 const listSiteAlerts = vi.fn()
 const ignoreAlert = vi.fn()
 const unignoreAlert = vi.fn()
+const snoozeAlert = vi.fn()
+const unsnoozeAlert = vi.fn()
+const assignAlert = vi.fn()
+const bulkIgnore = vi.fn()
+const bulkUnignore = vi.fn()
+const bulkSnooze = vi.fn()
+const bulkAssign = vi.fn()
 
 vi.mock("@/api/useApiClient", () => ({
   useApiClient: () => ({
@@ -21,6 +28,25 @@ vi.mock("@/api/useApiClient", () => ({
     listSiteAlerts,
     ignoreAlert,
     unignoreAlert,
+    snoozeAlert,
+    unsnoozeAlert,
+    assignAlert,
+    bulkIgnore,
+    bulkUnignore,
+    bulkSnooze,
+    bulkAssign,
+  }),
+}))
+
+vi.mock("@/auth/AuthProvider", () => ({
+  useAuth: () => ({
+    user: { id: "u_1", email: "user@example.com", createdAt: "2026-04-30T00:00:00Z" },
+    memberships: [
+      { tenantId: "t_1", tenantName: "Acme", role: "OWNER" as const },
+    ],
+    activeTenantId: "t_1",
+    isAuthed: true,
+    isLoading: false,
   }),
 }))
 
@@ -64,6 +90,13 @@ describe("Inbox", () => {
     listSiteAlerts.mockReset()
     ignoreAlert.mockReset()
     unignoreAlert.mockReset()
+    snoozeAlert.mockReset()
+    unsnoozeAlert.mockReset()
+    assignAlert.mockReset()
+    bulkIgnore.mockReset()
+    bulkUnignore.mockReset()
+    bulkSnooze.mockReset()
+    bulkAssign.mockReset()
   })
 
   it("queries the selected site and switches when the picker changes", async () => {
@@ -89,6 +122,79 @@ describe("Inbox", () => {
       const callArgs = listSiteAlerts.mock.calls.map((c) => c[0])
       expect(callArgs).toContain("s_2")
     })
+  })
+
+  it("calls bulkIgnore with the selected alert ids when the bulk Ignore button is clicked", async () => {
+    listSitesByTenant.mockResolvedValue([makeSite("s_1", "https://acme.example")])
+    listSiteAlerts.mockResolvedValue({
+      items: [
+        {
+          id: "a_1",
+          siteId: "s_1",
+          crawlRunId: "c_1",
+          pageUrl: "https://acme.example/a",
+          type: "TITLE_MISSING",
+          severity: "ERROR",
+          message: "no title",
+          createdAt: "2026-04-30T00:00:00Z",
+          status: "OPEN",
+          lastSeenAt: "2026-04-30T00:00:00Z",
+          affectedUrls: [],
+        },
+        {
+          id: "a_2",
+          siteId: "s_1",
+          crawlRunId: "c_1",
+          pageUrl: "https://acme.example/b",
+          type: "MISSING_ALT_TEXT",
+          severity: "WARNING",
+          message: "no alt",
+          createdAt: "2026-04-30T00:00:00Z",
+          status: "OPEN",
+          lastSeenAt: "2026-04-30T00:00:00Z",
+          affectedUrls: [],
+        },
+      ],
+      total: 2,
+      page: 0,
+      size: 25,
+    })
+    bulkIgnore.mockResolvedValue({ updated: 2 })
+
+    renderRoute()
+
+    await waitFor(() => {
+      expect(listSiteAlerts).toHaveBeenCalled()
+    })
+
+    // Toggle the two row checkboxes. Re-find each checkbox by id between
+    // clicks so we get the latest reference (TanStack Table re-renders the
+    // cell tree after the first selection update).
+    const cb1 = await screen.findByTestId("alerts-select-a_1")
+    fireEvent.click(cb1)
+    await waitFor(() => {
+      const refresh = screen.getByTestId("alerts-select-a_1") as HTMLElement
+      expect(refresh.getAttribute("aria-checked")).toBe("true")
+    })
+    const cb2 = await screen.findByTestId("alerts-select-a_2")
+    fireEvent.click(cb2)
+    await waitFor(() => {
+      const refresh = screen.getByTestId("alerts-select-a_2") as HTMLElement
+      expect(refresh.getAttribute("aria-checked")).toBe("true")
+    })
+
+    // Toolbar appears once 1+ rows are selected.
+    const ignoreBtn = await screen.findByTestId("bulk-ignore")
+    fireEvent.click(ignoreBtn)
+
+    await waitFor(() => {
+      expect(bulkIgnore).toHaveBeenCalledTimes(1)
+    })
+    const ids = bulkIgnore.mock.calls[0]?.[0]
+    expect(ids).toBeDefined()
+    expect(Array.isArray(ids)).toBe(true)
+    expect(ids).toContain("a_1")
+    expect(ids).toContain("a_2")
   })
 
   it("passes status=OPEN on the Open tab and status=RESOLVED on the Resolved tab", async () => {

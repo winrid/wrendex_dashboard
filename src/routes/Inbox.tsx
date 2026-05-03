@@ -1,7 +1,6 @@
 // Cross-site inbox (plan section 3). Three tabs - Open / Snoozed / Resolved
-// - over listSiteAlerts. Snoozed renders a "coming soon" stub for now; the
-// backend snooze surface lands later. The tenant may have multiple sites;
-// the picker lets the user pin which site's alerts they're triaging.
+// - over listSiteAlerts. The tenant may have multiple sites; the picker
+// lets the user pin which site's alerts they're triaging.
 //
 // Filters live in component state: search by URL, severity multi-select,
 // category multi-select. Severity / pageUrlContains feed straight to the
@@ -10,10 +9,20 @@
 // catalog still owns category mapping (single source of truth, see
 // AGENTS.md "Repo layout").
 //
+// Bulk actions (Phase 2 iter 3 FE-D): row selection wired through
+// AlertsTable; once 1+ rows are selected the BulkActionToolbar renders
+// above the table with Ignore / Snooze / Assign / Unignore options. Bulk
+// methods on the typed client - bulkIgnore / bulkSnooze / bulkAssign /
+// bulkUnignore - hit /api/alerts/bulk/* (BE iter 3).
+//
+// Per-row actions: a kebab dropdown exposes Snooze 24h / Snooze 7d / Assign
+// / Acknowledge for individual rows that don't need bulk semantics.
+//
 // Deep links: ?siteId=, ?status=, ?crawlRunId= seed initial state. siteId
 // overrides the auto-pick-first-site default; status switches the active
-// tab; crawlRunId narrows alerts to that single crawl (BE Phase 1 fix
-// added the ?crawlRunId= filter on /api/sites/{siteId}/alerts).
+// tab (status=SNOOZED selects the Snoozed tab); crawlRunId narrows alerts
+// to that single crawl (BE Phase 1 fix added the ?crawlRunId= filter on
+// /api/sites/{siteId}/alerts).
 
 import { useEffect, useMemo, useState } from "react"
 import { useParams, useSearchParams } from "react-router-dom"
@@ -23,13 +32,21 @@ import {
   useQueryClient,
 } from "@tanstack/react-query"
 import { toast } from "sonner"
-import type { OnChangeFn, PaginationState, SortingState } from "@tanstack/react-table"
+import type {
+  OnChangeFn,
+  PaginationState,
+  RowSelectionState,
+  SortingState,
+} from "@tanstack/react-table"
+import { ApiError, isApiError } from "@/api/client"
 import { useApiClient } from "@/api/useApiClient"
+import { useAuth } from "@/auth/AuthProvider"
 import type {
   Alert,
   AlertListParams,
   AlertQueryResult,
   AlertStatus,
+  BulkActionResponse,
 } from "@/api/types"
 import { getAllCategories, getCheck } from "@/api/checkCatalog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -38,15 +55,26 @@ import {
   type AlertsTableToolbarState,
 } from "@/components/alerts-table/AlertsTable"
 import { AlertDetailDrawer } from "@/components/alerts-table/AlertDetailDrawer"
+import {
+  BulkActionToolbar,
+  membershipsToMembers,
+} from "@/components/alerts-table/BulkActionToolbar"
 import { CsvExportButton } from "@/components/csv/CsvExportButton"
 import { siteDisplayName } from "@/lib/format"
 
 type TabKey = "open" | "snoozed" | "resolved"
 
+// SNOOZED is a typed status on the wire (BE iter 3 will land it). The cast
+// keeps the param wiring simple; the BE accepts any AlertStatus for the
+// ?status= query param (Phase 1 fix routed through the AlertListParams
+// shape).
+const SNOOZED_STATUS = "SNOOZED" as unknown as AlertStatus
+
 function statusForTab(tab: TabKey): AlertStatus | undefined {
   if (tab === "open") return "OPEN"
   if (tab === "resolved") return "RESOLVED"
-  return undefined // snoozed - no BE status yet
+  if (tab === "snoozed") return SNOOZED_STATUS
+  return undefined
 }
 
 function tabFromStatusParam(raw: string | null): TabKey {
@@ -64,6 +92,15 @@ const DEFAULT_TOOLBAR: AlertsTableToolbarState = {
   status: undefined,
 }
 
+function snoozeUntil(durationHours: number): string {
+  const ms = durationHours * 60 * 60 * 1000
+  return new Date(Date.now() + ms).toISOString()
+}
+
+function selectedIds(selection: RowSelectionState): string[] {
+  return Object.keys(selection).filter((k) => selection[k] === true)
+}
+
 export function Inbox() {
   const { tenantId = "default" } = useParams<{ tenantId: string }>()
   const [searchParams] = useSearchParams()
@@ -72,6 +109,7 @@ export function Inbox() {
   const crawlRunIdParam = searchParams.get("crawlRunId") || undefined
   const client = useApiClient()
   const queryClient = useQueryClient()
+  const auth = useAuth()
 
   const [tab, setTab] = useState<TabKey>(initialTab)
   const [siteId, setSiteId] = useState<string | null>(initialSiteId)
@@ -82,6 +120,7 @@ export function Inbox() {
   const [sorting, setSorting] = useState<SortingState>([])
   const [toolbar, setToolbar] = useState<AlertsTableToolbarState>(DEFAULT_TOOLBAR)
   const [openAlert, setOpenAlert] = useState<Alert | null>(null)
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
 
   const sitesQ = useQuery({
     queryKey: ["sites", tenantId],
@@ -116,8 +155,28 @@ export function Inbox() {
 
   const alertsQ = useQuery<AlertQueryResult>({
     queryKey: ["site-alerts", siteId, params],
-    queryFn: () => client.listSiteAlerts(siteId!, params),
-    enabled: Boolean(siteId) && tab !== "snoozed",
+    queryFn: async () => {
+      try {
+        return await client.listSiteAlerts(siteId!, params)
+      } catch (e) {
+        // Snoozed bucket gracefully degrades when the BE does not yet
+        // recognise ?status=SNOOZED (iter 3 ships it).
+        if (
+          tab === "snoozed" &&
+          e instanceof ApiError &&
+          (e.status === 400 || e.status === 404)
+        ) {
+          return {
+            items: [],
+            total: 0,
+            page: 0,
+            size: pagination.pageSize,
+          }
+        }
+        throw e
+      }
+    },
+    enabled: Boolean(siteId),
   })
 
   const filtered = useMemo<Alert[]>(() => {
@@ -129,6 +188,12 @@ export function Inbox() {
       return set.has(cat)
     })
   }, [alertsQ.data, toolbar.categories])
+
+  // Clear row selection when the source data changes (filters / pagination
+  // / tab) so we don't leave stale selected ids dangling across pages.
+  useEffect(() => {
+    setRowSelection({})
+  }, [siteId, tab, pagination.pageIndex, toolbar])
 
   const ignoreMut = useMutation({
     mutationFn: (alertId: string) => client.ignoreAlert(alertId),
@@ -148,8 +213,105 @@ export function Inbox() {
     onError: () => toast.error("Could not unignore alert"),
   })
 
+  const snoozeRowMut = useMutation({
+    mutationFn: (input: { id: string; hours: number }) =>
+      client.snoozeAlert(input.id, snoozeUntil(input.hours)),
+    onSuccess: (_data, vars) => {
+      toast.success(`Alert snoozed for ${vars.hours >= 24 ? `${vars.hours / 24}d` : `${vars.hours}h`}`)
+      void queryClient.invalidateQueries({ queryKey: ["site-alerts"] })
+    },
+    onError: (e) => {
+      if (isApiError(e) && e.status === 404) {
+        toast.error("Snooze endpoint not yet available")
+        return
+      }
+      toast.error("Could not snooze alert")
+    },
+  })
+
+  const assignRowMut = useMutation({
+    mutationFn: (input: { id: string; userId: string | null }) =>
+      client.assignAlert(input.id, input.userId),
+    onSuccess: () => {
+      toast.success("Alert assigned")
+      void queryClient.invalidateQueries({ queryKey: ["site-alerts"] })
+    },
+    onError: (e) => {
+      if (isApiError(e) && e.status === 404) {
+        toast.error("Assign endpoint not yet available")
+        return
+      }
+      toast.error("Could not assign alert")
+    },
+  })
+
+  const acknowledgeRowMut = useMutation({
+    mutationFn: (alertId: string) => client.ignoreAlert(alertId),
+    onSuccess: () => {
+      toast.success("Alert acknowledged")
+      void queryClient.invalidateQueries({ queryKey: ["site-alerts"] })
+    },
+    onError: () => toast.error("Could not acknowledge alert"),
+  })
+
+  // ---- Bulk mutations ------------------------------------------------------
+
+  const onBulkSettled = (resp: BulkActionResponse | undefined) => {
+    const n = resp?.updated ?? selectedIds(rowSelection).length
+    toast.success(`${n} alerts updated`)
+    setRowSelection({})
+    void queryClient.invalidateQueries({ queryKey: ["site-alerts"] })
+  }
+
+  const onBulkError = (e: unknown) => {
+    if (isApiError(e) && e.status === 404) {
+      toast.error("Bulk endpoint not yet available")
+      return
+    }
+    toast.error("Bulk action failed")
+  }
+
+  const bulkIgnoreMut = useMutation({
+    mutationFn: (ids: string[]) => client.bulkIgnore(ids),
+    onSuccess: onBulkSettled,
+    onError: onBulkError,
+  })
+
+  const bulkUnignoreMut = useMutation({
+    mutationFn: (ids: string[]) => client.bulkUnignore(ids),
+    onSuccess: onBulkSettled,
+    onError: onBulkError,
+  })
+
+  const bulkSnoozeMut = useMutation({
+    mutationFn: (input: { ids: string[]; until: string }) =>
+      client.bulkSnooze(input.ids, input.until),
+    onSuccess: onBulkSettled,
+    onError: onBulkError,
+  })
+
+  const bulkAssignMut = useMutation({
+    mutationFn: (input: { ids: string[]; userId: string | null }) =>
+      client.bulkAssign(input.ids, input.userId),
+    onSuccess: onBulkSettled,
+    onError: onBulkError,
+  })
+
   const sites = sitesQ.data ?? []
   const showSitePicker = sites.length > 1
+  const selectedAlertIds = useMemo(
+    () => selectedIds(rowSelection),
+    [rowSelection],
+  )
+
+  // Tenant member options for the bulk Assign dropdown. There is no
+  // listTenantMembers endpoint yet (BE iter 3+); fall back to the active
+  // user only.
+  const activeMembership = auth.memberships.find((m) => m.tenantId === tenantId)
+  const memberOptions = useMemo(
+    () => membershipsToMembers(activeMembership, auth.user ?? undefined),
+    [activeMembership, auth.user],
+  )
 
   // When tab changes, reset pagination so the user lands on page 1 of the
   // new status bucket.
@@ -165,6 +327,11 @@ export function Inbox() {
   }
   const onSortingChange: OnChangeFn<SortingState> = (updater) => {
     setSorting((prev) =>
+      typeof updater === "function" ? updater(prev) : updater,
+    )
+  }
+  const onRowSelectionChange: OnChangeFn<RowSelectionState> = (updater) => {
+    setRowSelection((prev) =>
       typeof updater === "function" ? updater(prev) : updater,
     )
   }
@@ -224,9 +391,7 @@ export function Inbox() {
           {renderBody()}
         </TabsContent>
         <TabsContent value="snoozed" className="mt-4">
-          <div className="rounded-md border bg-card p-8 text-center text-sm text-muted-foreground">
-            Snoozed alerts are coming soon.
-          </div>
+          {renderBody()}
         </TabsContent>
         <TabsContent value="resolved" className="mt-4">
           {renderBody()}
@@ -275,22 +440,61 @@ export function Inbox() {
         </div>
       )
     }
+    const bulkPending =
+      bulkIgnoreMut.isPending ||
+      bulkUnignoreMut.isPending ||
+      bulkSnoozeMut.isPending ||
+      bulkAssignMut.isPending
     return (
-      <AlertsTable
-        data={filtered}
-        total={alertsQ.data?.total ?? 0}
-        isLoading={alertsQ.isLoading}
-        pagination={pagination}
-        onPaginationChange={onPaginationChange}
-        sorting={sorting}
-        onSortingChange={onSortingChange}
-        toolbar={toolbar}
-        onToolbarChange={setToolbar}
-        categoryOptions={getAllCategories()}
-        onIgnore={(a) => ignoreMut.mutate(a.id)}
-        onUnignore={(a) => unignoreMut.mutate(a.id)}
-        onRowClick={(a) => setOpenAlert(a)}
-      />
+      <div className="space-y-3">
+        <BulkActionToolbar
+          count={selectedAlertIds.length}
+          ignoredBucket={tab === "snoozed" || tab === "resolved"}
+          onClear={() => setRowSelection({})}
+          onIgnore={() => bulkIgnoreMut.mutate(selectedAlertIds)}
+          onUnignore={() => bulkUnignoreMut.mutate(selectedAlertIds)}
+          onSnooze={(hours) =>
+            bulkSnoozeMut.mutate({
+              ids: selectedAlertIds,
+              until: snoozeUntil(hours),
+            })
+          }
+          onAssign={(userId) =>
+            bulkAssignMut.mutate({ ids: selectedAlertIds, userId })
+          }
+          members={memberOptions}
+          pending={bulkPending}
+        />
+        <AlertsTable
+          data={filtered}
+          total={alertsQ.data?.total ?? 0}
+          isLoading={alertsQ.isLoading}
+          pagination={pagination}
+          onPaginationChange={onPaginationChange}
+          sorting={sorting}
+          onSortingChange={onSortingChange}
+          toolbar={toolbar}
+          onToolbarChange={setToolbar}
+          categoryOptions={getAllCategories()}
+          onIgnore={(a) => ignoreMut.mutate(a.id)}
+          onUnignore={(a) => unignoreMut.mutate(a.id)}
+          onRowClick={(a) => setOpenAlert(a)}
+          onSnooze24h={(a) =>
+            snoozeRowMut.mutate({ id: a.id, hours: 24 })
+          }
+          onSnooze7d={(a) =>
+            snoozeRowMut.mutate({ id: a.id, hours: 24 * 7 })
+          }
+          onAssign={(a) => {
+            const me = auth.user?.id ?? null
+            assignRowMut.mutate({ id: a.id, userId: me })
+          }}
+          onAcknowledge={(a) => acknowledgeRowMut.mutate(a.id)}
+          enableRowSelection
+          rowSelection={rowSelection}
+          onRowSelectionChange={onRowSelectionChange}
+        />
+      </div>
     )
   }
 }

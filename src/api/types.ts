@@ -991,3 +991,106 @@ export type UpdatePagerDutyChannelInput = {
   integrationKey: string
   severityFloor: SeverityFloor
 }
+
+// ---------------------------------------------------------------------------
+// Public catalog (plan section 6 / sec 0.3e iter 2). PUBLIC, no auth header.
+// Backed by GET /api/catalog (CatalogController). Mirrors the static
+// CheckCatalogEntry shape in src/api/checkCatalog.ts so the FE can swap the
+// hand-written list for the BE response.
+// ---------------------------------------------------------------------------
+
+export type PublicCatalogEntry = {
+  type: AlertType | string
+  category: string
+  severityDefault: Severity
+  title: string
+  description: string
+  howToFix: string
+  marketingId: string
+}
+
+// ---------------------------------------------------------------------------
+// Inbox bulk actions (plan section 3). BE iter 3 ships the matching endpoints;
+// the FE falls back to per-row mutations if the bulk endpoints 404.
+// ---------------------------------------------------------------------------
+
+export type BulkAlertActionRequest = {
+  alertIds: string[]
+}
+
+export type BulkSnoozeRequest = BulkAlertActionRequest & {
+  /** ISO 8601 UTC timestamp; alerts un-snooze when now() > until. */
+  until: string
+}
+
+export type BulkAssignRequest = BulkAlertActionRequest & {
+  userId: string | null
+}
+
+export type BulkActionResponse = {
+  updated: number
+}
+
+export type SnoozeAlertInput = {
+  until: string
+}
+
+export type AssignAlertInput = {
+  userId: string | null
+}
+
+// ---------------------------------------------------------------------------
+// Slack channel (plan section 8.2). BE iter 1 wired the controllers;
+// FE OAuth install flow lands here. The redacted shape never includes the
+// access token (BE strips it from every payload).
+// ---------------------------------------------------------------------------
+
+export type SlackChannel = {
+  id: string
+  tenantId: string
+  slackTeamId: string | null
+  slackTeamName: string | null
+  defaultChannelId: string | null
+  defaultChannelName: string | null
+  kind?: string | null
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export type StartSlackInstallInput = {
+  /** Where the BE should 302 the user once OAuth completes. Usually the
+   *  current Settings tab URL so the page can re-render with the connected
+   *  card. */
+  returnUrl: string
+}
+
+export type StartSlackInstallResponse = {
+  url: string
+}
+
+// ---------------------------------------------------------------------------
+// Status page (plan section 16). PUBLIC. Backed by GET /api/status (BE iter 3).
+// Each component reports operational / degraded / down + the relevant metric.
+// ---------------------------------------------------------------------------
+
+export type StatusLevel = "operational" | "degraded" | "down"
+
+export type StatusComponent = {
+  /** Stable id used as a React key + for telemetry. */
+  id: string
+  /** Display name (e.g. "API", "Crawler"). */
+  name: string
+  status: StatusLevel
+  /** Free-form metric line ("99.97% uptime", "45ms latency"). */
+  metric?: string | null
+  /** Optional last-updated ISO timestamp. */
+  updatedAt?: string | null
+}
+
+export type StatusResponse = {
+  /** Overall rollup; usually max(component.status) by severity. */
+  status: StatusLevel
+  /** As-of timestamp for the snapshot. */
+  updatedAt: string
+  components: StatusComponent[]
+}

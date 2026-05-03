@@ -171,6 +171,44 @@ external component libraries.
   listNotificationLog (BE iter 2 round 2). Channel + status multi-select +
   since-window filter, per-row Resend button. Renders an empty "shipping
   shortly" state when the BE 404s.
+- `/t/:tenantId/catalog` - Catalog explorer (sec 6). Lazy-fetches
+  `getPublicCatalog()` and merges the BE entries onto the static FE catalog
+  in `src/api/checkCatalog.ts`. Search bar filters across title /
+  description / type / marketingId; left sidebar narrows by category;
+  per-row firing-count is fetched lazily via `listSiteAlerts(siteId,
+  {type, page:0, size:1})` so we read `total` without paying for the alert
+  payload. Row click navigates to the per-AlertType drill-in scoped to the
+  active site's latest crawl. Console.warns when FE/BE catalogs drift.
+- `/status` - public status page (sec 16). Mounts above the AppShell, no
+  tenant scope, no auth. Polls `getStatus()` every 30s and renders four
+  component cards (API / Crawler / Scheduler / Mongo) with operational /
+  degraded / down badges + metric line. Falls back to a "coming soon"
+  placeholder when the BE 404s.
+
+## Inbox bulk-action surface (sec 3, FE-D)
+
+`AlertsTable` exposes `enableRowSelection`, `rowSelection`, and
+`onRowSelectionChange` props that wire a leading checkbox column into the
+TanStack Table state. The selection is keyed on `Alert.id` (via
+`getRowId`), so toggles persist across server-paginated page changes. When
+1+ rows are selected, `Inbox.tsx` renders `BulkActionToolbar` above the
+table with Ignore / Snooze (24h / 7d) / Assign / Unignore actions; each
+button calls into the typed-client `bulk*` methods (PATCH /api/alerts/bulk/*).
+A per-row kebab dropdown surfaces the same set of single-row actions
+(snoozeAlert / assignAlert / ignoreAlert). The Snoozed tab binds to
+`?status=SNOOZED`; the Inbox falls back to an empty result when the BE
+4xxs the SNOOZED enum.
+
+## Slack OAuth install flow (sec 8.2, FE-D)
+
+Settings -> Tenant -> Slack channel card. Reads `getSlackChannel(tenantId)`;
+404 means not connected and renders an "Install to Slack" button that
+calls `startSlackInstall(tenantId, {returnUrl})` and assigns
+`window.location.href` to the BE-returned URL. Slack redirects back to
+`POST /api/slack/oauth/callback` (BE-handled), which 302s the browser to
+the supplied returnUrl; the page re-renders with the connected card
+(team name + default channel + Disconnect / Reinstall). Disconnect calls
+`deleteSlackChannel(tenantId)`.
 
 ## CSV export pattern (sec 4.9)
 

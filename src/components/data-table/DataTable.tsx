@@ -11,6 +11,8 @@ import {
   type ColumnPinningState,
   type OnChangeFn,
   type PaginationState,
+  type Row,
+  type RowSelectionState,
   type SortingState,
 } from "@tanstack/react-table"
 import { useVirtualizer } from "@tanstack/react-virtual"
@@ -47,6 +49,15 @@ export type DataTableProps<TData, TValue = unknown> = {
   onColumnFiltersChange?: OnChangeFn<ColumnFiltersState>
   columnPinning?: ColumnPinningState
   onColumnPinningChange?: OnChangeFn<ColumnPinningState>
+  /** Row-selection wiring. Pair with `getRowId` so the selection persists
+   *  across server-paginated page changes (the default uses the row index,
+   *  which collides). */
+  enableRowSelection?: boolean
+  rowSelection?: RowSelectionState
+  onRowSelectionChange?: OnChangeFn<RowSelectionState>
+  /** Stable per-row id used by row-selection, sorting, and downstream
+   *  effects. Defaults to the row index. */
+  getRowId?: (row: TData, index: number, parent?: Row<TData>) => string
 }
 
 /**
@@ -74,6 +85,10 @@ export function DataTable<TData, TValue = unknown>({
   onColumnFiltersChange: onColumnFiltersChangeProp,
   columnPinning: columnPinningProp,
   onColumnPinningChange: onColumnPinningChangeProp,
+  enableRowSelection,
+  rowSelection: rowSelectionProp,
+  onRowSelectionChange: onRowSelectionChangeProp,
+  getRowId,
 }: DataTableProps<TData, TValue>) {
   const [internalSorting, setInternalSorting] = useState<SortingState>([])
   const [internalPagination, setInternalPagination] = useState<PaginationState>({
@@ -82,24 +97,35 @@ export function DataTable<TData, TValue = unknown>({
   })
   const [internalColumnFilters, setInternalColumnFilters] = useState<ColumnFiltersState>([])
   const [internalColumnPinning, setInternalColumnPinning] = useState<ColumnPinningState>({})
+  const [internalRowSelection, setInternalRowSelection] = useState<RowSelectionState>({})
 
   const sorting = sortingProp ?? internalSorting
   const pagination = paginationProp ?? internalPagination
   const columnFilters = columnFiltersProp ?? internalColumnFilters
   const columnPinning = columnPinningProp ?? internalColumnPinning
+  const rowSelection = rowSelectionProp ?? internalRowSelection
 
   const isServerPaginated = rowCount != null
 
   const table = useReactTable({
     data,
     columns,
-    state: { sorting, pagination, columnFilters, columnPinning },
+    state: {
+      sorting,
+      pagination,
+      columnFilters,
+      columnPinning,
+      rowSelection,
+    },
     rowCount,
     manualPagination: isServerPaginated,
+    enableRowSelection,
     onSortingChange: onSortingChangeProp ?? setInternalSorting,
     onPaginationChange: onPaginationChangeProp ?? setInternalPagination,
     onColumnFiltersChange: onColumnFiltersChangeProp ?? setInternalColumnFilters,
     onColumnPinningChange: onColumnPinningChangeProp ?? setInternalColumnPinning,
+    onRowSelectionChange: onRowSelectionChangeProp ?? setInternalRowSelection,
+    getRowId,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),

@@ -15,18 +15,26 @@ import {
   type ColumnFiltersState,
   type OnChangeFn,
   type PaginationState,
+  type RowSelectionState,
   type SortingState,
 } from "@tanstack/react-table"
-import { ChevronDownIcon, EyeOffIcon, EyeIcon } from "lucide-react"
+import {
+  ChevronDownIcon,
+  EyeOffIcon,
+  EyeIcon,
+  MoreHorizontalIcon,
+} from "lucide-react"
 import type { Alert, AlertStatus, Severity } from "@/api/types"
 import { getCheck } from "@/api/checkCatalog"
 import { DataTable } from "@/components/data-table/DataTable"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -69,6 +77,21 @@ export type AlertsTableProps = {
   onIgnore?: (alert: Alert) => void
   onUnignore?: (alert: Alert) => void
   onRowClick?: (alert: Alert) => void
+  /** Per-row dropdown actions. When supplied, renders a kebab menu in the
+   *  actions column with Snooze 24h / Snooze 7d / Assign / Acknowledge
+   *  options. Each handler is passed the row alert. */
+  onSnooze24h?: (alert: Alert) => void
+  onSnooze7d?: (alert: Alert) => void
+  onAssign?: (alert: Alert) => void
+  onAcknowledge?: (alert: Alert) => void
+  /** Row selection wiring. When `enableRowSelection` is true the table
+   *  renders a leading checkbox column and surfaces the controlled state via
+   *  `rowSelection` / `onRowSelectionChange`. The parent route maps the
+   *  selected rows to alert ids via the `data` array - the table keys row
+   *  selection on `Alert.id` so toggling persists across pagination. */
+  enableRowSelection?: boolean
+  rowSelection?: RowSelectionState
+  onRowSelectionChange?: OnChangeFn<RowSelectionState>
 }
 
 function severityDotClass(sev: Severity): string {
@@ -99,9 +122,47 @@ export function AlertsTable({
   onIgnore,
   onUnignore,
   onRowClick,
+  onSnooze24h,
+  onSnooze7d,
+  onAssign,
+  onAcknowledge,
+  enableRowSelection,
+  rowSelection,
+  onRowSelectionChange,
 }: AlertsTableProps) {
   const columns = useMemo<ColumnDef<Alert>[]>(() => {
-    return [
+    const cols: ColumnDef<Alert>[] = []
+    if (enableRowSelection) {
+      cols.push({
+        id: "select",
+        header: ({ table }) => {
+          const allChecked =
+            table.getIsAllPageRowsSelected() ||
+            (table.getIsSomePageRowsSelected() && "indeterminate")
+          return (
+            <Checkbox
+              aria-label="Select all"
+              checked={allChecked}
+              onCheckedChange={(value) =>
+                table.toggleAllPageRowsSelected(Boolean(value))
+              }
+              data-testid="alerts-select-all"
+            />
+          )
+        },
+        cell: ({ row }) => (
+          <Checkbox
+            aria-label={`Select alert ${row.original.id}`}
+            checked={row.getIsSelected()}
+            onCheckedChange={(value) => row.toggleSelected(Boolean(value))}
+            onClick={(e) => e.stopPropagation()}
+            data-testid={`alerts-select-${row.original.id}`}
+          />
+        ),
+        enableSorting: false,
+      })
+    }
+    cols.push(
       {
         id: "severity",
         header: "Severity",
@@ -182,41 +243,111 @@ export function AlertsTable({
         header: "",
         cell: ({ row }) => {
           const alert = row.original
-          if (alert.status === "OPEN" && onIgnore) {
-            return (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onIgnore(alert)
-                }}
-              >
-                <EyeOffIcon />
-                <span className="sr-only">Ignore</span>
-              </Button>
-            )
-          }
-          if (alert.status === "IGNORED" && onUnignore) {
-            return (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onUnignore(alert)
-                }}
-              >
-                <EyeIcon />
-                <span className="sr-only">Unignore</span>
-              </Button>
-            )
-          }
-          return null
+          const hasMenu =
+            Boolean(onSnooze24h) ||
+            Boolean(onSnooze7d) ||
+            Boolean(onAssign) ||
+            Boolean(onAcknowledge)
+          return (
+            <div className="flex items-center justify-end gap-1">
+              {alert.status === "OPEN" && onIgnore ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onIgnore(alert)
+                  }}
+                >
+                  <EyeOffIcon />
+                  <span className="sr-only">Ignore</span>
+                </Button>
+              ) : null}
+              {alert.status === "IGNORED" && onUnignore ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onUnignore(alert)
+                  }}
+                >
+                  <EyeIcon />
+                  <span className="sr-only">Unignore</span>
+                </Button>
+              ) : null}
+              {hasMenu ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => e.stopPropagation()}
+                      data-testid={`alerts-row-menu-${alert.id}`}
+                      aria-label="Row actions"
+                    >
+                      <MoreHorizontalIcon />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {onSnooze24h ? (
+                      <DropdownMenuItem
+                        onSelect={(e) => {
+                          e.preventDefault()
+                          onSnooze24h(alert)
+                        }}
+                      >
+                        Snooze 24h
+                      </DropdownMenuItem>
+                    ) : null}
+                    {onSnooze7d ? (
+                      <DropdownMenuItem
+                        onSelect={(e) => {
+                          e.preventDefault()
+                          onSnooze7d(alert)
+                        }}
+                      >
+                        Snooze 7d
+                      </DropdownMenuItem>
+                    ) : null}
+                    {onAssign ? (
+                      <DropdownMenuItem
+                        onSelect={(e) => {
+                          e.preventDefault()
+                          onAssign(alert)
+                        }}
+                      >
+                        Assign...
+                      </DropdownMenuItem>
+                    ) : null}
+                    {onAcknowledge ? (
+                      <DropdownMenuItem
+                        onSelect={(e) => {
+                          e.preventDefault()
+                          onAcknowledge(alert)
+                        }}
+                      >
+                        Acknowledge
+                      </DropdownMenuItem>
+                    ) : null}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+            </div>
+          )
         },
       },
-    ]
-  }, [onIgnore, onUnignore])
+    )
+    return cols
+  }, [
+    enableRowSelection,
+    onIgnore,
+    onUnignore,
+    onSnooze24h,
+    onSnooze7d,
+    onAssign,
+    onAcknowledge,
+  ])
 
   // The DataTable wrapper exposes controlled `columnFilters`, but the alert
   // toolbar maps to server params (pageUrlContains, severity, etc.) rather
@@ -251,6 +382,10 @@ export function AlertsTable({
           onColumnFiltersChange={onColumnFiltersChange}
           isLoading={isLoading}
           emptyState="No alerts match these filters."
+          enableRowSelection={enableRowSelection}
+          rowSelection={rowSelection}
+          onRowSelectionChange={onRowSelectionChange}
+          getRowId={enableRowSelection ? (row) => row.id : undefined}
         />
       </div>
     </div>

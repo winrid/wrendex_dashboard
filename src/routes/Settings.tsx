@@ -24,6 +24,7 @@ import type {
   Plan,
   SeverityFloor,
   Site,
+  SlackChannel,
   TeamsChannel,
 } from "@/api/types"
 import {
@@ -292,7 +293,7 @@ function TenantTab({ tenantId }: { tenantId: string }) {
       </Card>
 
       <EmailChannelCard tenantId={tenantId} />
-      <SlackChannelStubCard />
+      <SlackChannelCard tenantId={tenantId} />
       <TeamsChannelCard tenantId={tenantId} />
       <PagerDutyChannelCard tenantId={tenantId} />
     </div>
@@ -300,13 +301,71 @@ function TenantTab({ tenantId }: { tenantId: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Slack channel placeholder. The BE wires Slack via OAuth (existing
-// SlackChannelController); the FE OAuth dance lives in a future iter. Until
-// it lands, we surface a small notice + a "Send test alert" stub so the
-// channels matrix is visible.
+// Slack channel card (plan section 8.2). BE iter 1 wired
+// SlackChannelController; the FE OAuth install flow lives here:
+//
+//   1. GET /api/tenants/{tenantId}/slack-channel
+//      -> 200 means connected; render the team / channel + Disconnect.
+//      -> 404 means not connected; render the Install button.
+//   2. Install: POST /api/tenants/{tenantId}/slack-channel/install/start
+//      with { returnUrl } where returnUrl is the current page URL. The BE
+//      returns { url } pointing at Slack's OAuth authorize endpoint;
+//      window.location.href = url sends the browser there. After Slack
+//      redirects back to /api/slack/oauth/callback, the BE 302s the user
+//      to the returnUrl. This page re-fetches getSlackChannel and flips
+//      to the connected state.
+//   3. Disconnect: DELETE /api/tenants/{tenantId}/slack-channel.
 // ---------------------------------------------------------------------------
 
-function SlackChannelStubCard() {
+function SlackChannelCard({ tenantId }: { tenantId: string }) {
+  const client = useApiClient()
+  const queryClient = useQueryClient()
+
+  const channelQ = useQuery<SlackChannel | null>({
+    queryKey: ["slack-channel", tenantId],
+    queryFn: async () => {
+      try {
+        return await client.getSlackChannel(tenantId)
+      } catch (e) {
+        if (isApiError(e) && e.status === 404) return null
+        throw e
+      }
+    },
+    enabled: Boolean(tenantId),
+    retry: (failureCount, error) => {
+      if (error instanceof ApiError && error.status === 404) return false
+      return failureCount < 1
+    },
+  })
+
+  const installMut = useMutation({
+    mutationFn: () =>
+      client.startSlackInstall(tenantId, {
+        returnUrl: window.location.origin + window.location.pathname,
+      }),
+    onSuccess: (resp) => {
+      if (resp?.url) {
+        window.location.href = resp.url
+      }
+    },
+    onError: () => toast.error("Could not start Slack install"),
+  })
+
+  const disconnectMut = useMutation({
+    mutationFn: () => client.deleteSlackChannel(tenantId),
+    onSuccess: () => {
+      queryClient.setQueryData<SlackChannel | null>(
+        ["slack-channel", tenantId],
+        null,
+      )
+      toast.success("Slack disconnected")
+    },
+    onError: () => toast.error("Could not disconnect Slack"),
+  })
+
+  const channel = channelQ.data
+  const isConnected = channel != null
+
   return (
     <Card data-testid="slack-channel-card">
       <CardHeader>
@@ -316,22 +375,65 @@ function SlackChannelStubCard() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">
-          Slack OAuth setup is wired on the backend; the FE install flow lands
-          in a follow-up iter. Connect from the Slack app directory or contact
-          support for early access.
-        </p>
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled
-            title="Slack install flow lands in a follow-up iter"
-          >
-            Connect Slack
-          </Button>
-        </div>
+        {channelQ.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        ) : isConnected ? (
+          <div className="space-y-2" data-testid="slack-connected">
+            <div className="text-sm">
+              Connected to{" "}
+              <span className="font-medium">
+                {channel?.slackTeamName ?? "Slack workspace"}
+              </span>
+              {channel?.defaultChannelName ? (
+                <>
+                  {" "}
+                  in{" "}
+                  <span className="font-mono text-xs">
+                    #{channel.defaultChannelName}
+                  </span>
+                </>
+              ) : null}
+              .
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => installMut.mutate()}
+                disabled={installMut.isPending}
+              >
+                {installMut.isPending ? "Reinstalling..." : "Reinstall"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => disconnectMut.mutate()}
+                disabled={disconnectMut.isPending}
+                data-testid="slack-disconnect"
+              >
+                Disconnect
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-2" data-testid="slack-not-connected">
+            <p className="text-sm text-muted-foreground">
+              Install the Wrendex Slack app to receive alerts in a channel of
+              your choice.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => installMut.mutate()}
+              disabled={installMut.isPending}
+              data-testid="slack-install-button"
+            >
+              {installMut.isPending ? "Starting..." : "Install to Slack"}
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   )

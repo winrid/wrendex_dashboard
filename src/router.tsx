@@ -35,6 +35,7 @@ import { RootRedirect } from "@/routes/RootRedirect"
 import { Audit } from "@/routes/Audit"
 import { AnonymousCrawlTeaser } from "@/routes/AnonymousCrawlTeaser"
 import { AnonymousCrawlClaiming } from "@/routes/AnonymousCrawlClaiming"
+import { Status } from "@/routes/Status"
 
 // Public routes mount above RequireAuth so unauthenticated users can reach
 // them without being bounced to /login. Everything else lives inside the
@@ -52,6 +53,10 @@ export const router = createBrowserRouter([
   { path: "/audit", element: <Audit /> },
   { path: "/a/:token", element: <AnonymousCrawlTeaser /> },
   { path: "/a/:token/claiming", element: <AnonymousCrawlClaiming /> },
+  // Public status page (plan section 16). No tenant scope; mounted above
+  // RequireAuth so the marketing trust strip can deep-link unauthenticated
+  // visitors here.
+  { path: "/status", element: <Status /> },
   {
     path: "/",
     element: (

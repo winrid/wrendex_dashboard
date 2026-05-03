@@ -19,6 +19,7 @@ import type {
   AuthSignupRequest,
   AuthSignupResponse,
   BillingSnapshot,
+  BulkActionResponse,
   ChangePasswordInput,
   CrawlDiff,
   CrawlLogEntry,
@@ -46,6 +47,7 @@ import type {
   PagerDutyChannel,
   PasswordResetConfirm,
   PasswordResetRequest,
+  PublicCatalogEntry,
   RedirectsResult,
   ResendNotificationInput,
   ResendNotificationResponse,
@@ -53,6 +55,10 @@ import type {
   SetupIntent,
   Site,
   SiteSchedule,
+  SlackChannel,
+  StartSlackInstallInput,
+  StartSlackInstallResponse,
+  StatusResponse,
   TeamsChannel,
   UpdatePagerDutyChannelInput,
   UpdateTeamsChannelInput,
@@ -512,6 +518,66 @@ export function createApiClient(opts: CreateApiClientOptions) {
   }
 
   // -------------------------------------------------------------------------
+  // Per-alert snooze / assign (plan section 3, BE iter 3). Snooze sets the
+  // alert status to SNOOZED until the supplied ISO timestamp; the BE
+  // un-snoozes lazily on read or via a sweep.
+  // -------------------------------------------------------------------------
+
+  function snoozeAlert(alertId: string, until: string): Promise<Alert> {
+    return request<Alert>("PATCH", `/api/alerts/${alertId}/snooze`, {
+      body: { until },
+    })
+  }
+
+  function unsnoozeAlert(alertId: string): Promise<Alert> {
+    return request<Alert>("PATCH", `/api/alerts/${alertId}/unsnooze`)
+  }
+
+  function assignAlert(
+    alertId: string,
+    userId: string | null,
+  ): Promise<Alert> {
+    return request<Alert>("POST", `/api/alerts/${alertId}/assign`, {
+      body: { userId },
+    })
+  }
+
+  // -------------------------------------------------------------------------
+  // Bulk actions (plan section 3, BE iter 3). Each method takes a list of
+  // alert ids; the BE returns {updated: N}. Endpoints under /api/alerts/bulk/*.
+  // -------------------------------------------------------------------------
+
+  function bulkIgnore(alertIds: string[]): Promise<BulkActionResponse> {
+    return request<BulkActionResponse>("PATCH", "/api/alerts/bulk/ignore", {
+      body: { alertIds },
+    })
+  }
+
+  function bulkUnignore(alertIds: string[]): Promise<BulkActionResponse> {
+    return request<BulkActionResponse>("PATCH", "/api/alerts/bulk/unignore", {
+      body: { alertIds },
+    })
+  }
+
+  function bulkSnooze(
+    alertIds: string[],
+    until: string,
+  ): Promise<BulkActionResponse> {
+    return request<BulkActionResponse>("PATCH", "/api/alerts/bulk/snooze", {
+      body: { alertIds, until },
+    })
+  }
+
+  function bulkAssign(
+    alertIds: string[],
+    userId: string | null,
+  ): Promise<BulkActionResponse> {
+    return request<BulkActionResponse>("POST", "/api/alerts/bulk/assign", {
+      body: { alertIds, userId },
+    })
+  }
+
+  // -------------------------------------------------------------------------
   // Anonymous crawls - AnonymousCrawlController (plan section 2.0)
   // -------------------------------------------------------------------------
   //
@@ -819,6 +885,61 @@ export function createApiClient(opts: CreateApiClientOptions) {
     )
   }
 
+  // -------------------------------------------------------------------------
+  // Slack channel (plan section 8.2). BE wired iter 1; FE OAuth install flow
+  // shipped here. The install/start POST authenticates the caller (tenant
+  // membership required) and returns the Slack authorize URL; the OAuth
+  // callback POST is BE-handled and 302s back to the user's returnUrl.
+  // -------------------------------------------------------------------------
+
+  function getSlackChannel(tenantId: string): Promise<SlackChannel> {
+    return request<SlackChannel>(
+      "GET",
+      `/api/tenants/${tenantId}/slack-channel`,
+    )
+  }
+
+  function startSlackInstall(
+    tenantId: string,
+    input: StartSlackInstallInput,
+  ): Promise<StartSlackInstallResponse> {
+    return request<StartSlackInstallResponse>(
+      "POST",
+      `/api/tenants/${tenantId}/slack-channel/install/start`,
+      { body: input },
+    )
+  }
+
+  function deleteSlackChannel(tenantId: string): Promise<undefined> {
+    return request<undefined>(
+      "DELETE",
+      `/api/tenants/${tenantId}/slack-channel`,
+    )
+  }
+
+  // -------------------------------------------------------------------------
+  // Public catalog (plan section 6 / sec 0.3e iter 2). PUBLIC, no auth.
+  // The dashboard's static checkCatalog.ts is the source of truth for
+  // human-readable copy; this endpoint is used to surface drift between FE
+  // and BE catalogs and to back the /catalog explorer route.
+  // -------------------------------------------------------------------------
+
+  function getPublicCatalog(): Promise<PublicCatalogEntry[]> {
+    return request<PublicCatalogEntry[]>("GET", "/api/catalog", {
+      skipAuth: true,
+    })
+  }
+
+  // -------------------------------------------------------------------------
+  // Public status page (plan section 16; BE iter 3). PUBLIC, no auth.
+  // Returns operational / degraded / down for each subsystem the FE
+  // surfaces on /status.
+  // -------------------------------------------------------------------------
+
+  function getStatus(): Promise<StatusResponse> {
+    return request<StatusResponse>("GET", "/api/status", { skipAuth: true })
+  }
+
   return {
     // auth
     signup,
@@ -866,6 +987,13 @@ export function createApiClient(opts: CreateApiClientOptions) {
     getPageByUrl,
     ignoreAlert,
     unignoreAlert,
+    snoozeAlert,
+    unsnoozeAlert,
+    assignAlert,
+    bulkIgnore,
+    bulkUnignore,
+    bulkSnooze,
+    bulkAssign,
     // anonymous crawls
     startAnonymousCrawl,
     getAnonymousCrawl,
@@ -901,6 +1029,13 @@ export function createApiClient(opts: CreateApiClientOptions) {
     getPagerDutyChannel,
     updatePagerDutyChannel,
     deletePagerDutyChannel,
+    // slack channel (BE iter 1)
+    getSlackChannel,
+    startSlackInstall,
+    deleteSlackChannel,
+    // public surfaces (no auth header)
+    getPublicCatalog,
+    getStatus,
   } as const
 }
 

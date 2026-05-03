@@ -1699,11 +1699,102 @@ const ENTRIES: CheckCatalogEntry[] = [
   },
 ]
 
-// Build the lookup index once at module load. The catalog is static so this
-// is a pure runtime cost; tests that import the file pay the same.
-const BY_TYPE: Record<string, CheckCatalogEntry> = Object.fromEntries(
-  ENTRIES.map((entry) => [entry.type, entry]),
-)
+// ---------------------------------------------------------------------------
+// Lazy-loaded BE catalog cache (plan section 6 / sec 0.3e iter 2). The static
+// ENTRIES above are the FE source of truth (AGENTS.md "Repo layout"); the BE
+// /api/catalog endpoint should match them. We:
+//   1. Use ENTRIES as the synchronous baseline so getCheck / getAllChecks
+//      stay cheap and never throw.
+//   2. Allow feature code to call hydrateCatalogFromBackend(client) at app
+//      mount; on success we replace the in-memory ACTIVE list with the BE
+//      response (additive entries land too) and console.warn on any drift.
+//   3. Keep the static ENTRIES exported as a fallback so the explorer can
+//      render even if the BE 404s.
+// ---------------------------------------------------------------------------
+
+let ACTIVE: readonly CheckCatalogEntry[] = ENTRIES
+
+function buildIndex(
+  entries: readonly CheckCatalogEntry[],
+): Record<string, CheckCatalogEntry> {
+  const out: Record<string, CheckCatalogEntry> = {}
+  for (const e of entries) out[e.type] = e
+  return out
+}
+
+let INDEX = buildIndex(ACTIVE)
+
+export type HydrateCatalogClient = {
+  getPublicCatalog: () => Promise<unknown[]>
+}
+
+/** Replace the active catalog with the supplied list. The integrity test
+ *  guarantees every AlertType is covered by ENTRIES, so swapping in a smaller
+ *  BE response is safe (we union into ACTIVE rather than replace) - any FE
+ *  entry not present in the BE response is preserved. */
+export function setActiveCatalog(
+  next: readonly CheckCatalogEntry[] | null | undefined,
+): void {
+  if (!next || next.length === 0) {
+    ACTIVE = ENTRIES
+    INDEX = buildIndex(ACTIVE)
+    return
+  }
+  // Merge: BE entries take precedence; missing ones fall back to FE static
+  // entries. This way a BE that ships a subset still doesn't blank fields the
+  // FE depends on.
+  const merged = new Map<string, CheckCatalogEntry>()
+  for (const e of ENTRIES) merged.set(e.type, e)
+  for (const e of next) merged.set(e.type, e)
+  ACTIVE = Array.from(merged.values())
+  INDEX = buildIndex(ACTIVE)
+}
+
+/** Pull the BE catalog and hydrate the in-memory cache. Logs a console.warn
+ *  on drift between FE static entries and BE response. Resolves silently on
+ *  4xx/5xx so the FE keeps the static fallback. */
+export async function hydrateCatalogFromBackend(
+  client: HydrateCatalogClient,
+): Promise<readonly CheckCatalogEntry[]> {
+  try {
+    const remote = (await client.getPublicCatalog()) as CheckCatalogEntry[]
+    if (!Array.isArray(remote) || remote.length === 0) return ACTIVE
+    // Drift detection: warn for any FE entry whose title / category differ
+    // from the BE entry. This is best-effort - the FE remains the source of
+    // truth for human-readable copy.
+    const beIndex = buildIndex(remote)
+    const drift: string[] = []
+    for (const fe of ENTRIES) {
+      const be = beIndex[fe.type]
+      if (!be) {
+        drift.push(`${fe.type} present on FE but missing on BE`)
+        continue
+      }
+      if (be.category !== fe.category) {
+        drift.push(
+          `${fe.type} category drift: FE=${fe.category}, BE=${be.category}`,
+        )
+      }
+    }
+    for (const be of remote) {
+      if (!INDEX[be.type] && !ENTRIES.find((e) => e.type === be.type)) {
+        drift.push(`${be.type} present on BE but missing on FE`)
+      }
+    }
+    if (drift.length > 0) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `checkCatalog drift between FE and BE (${drift.length} entries):`,
+        drift.slice(0, 8),
+      )
+    }
+    setActiveCatalog(remote)
+    return ACTIVE
+  } catch {
+    // Swallow - keep the static fallback active.
+    return ACTIVE
+  }
+}
 
 /** Returns the catalog entry for an AlertType, or null if (somehow) the
  *  AlertType is unknown. The integrity test asserts every union literal is
@@ -1711,21 +1802,21 @@ const BY_TYPE: Record<string, CheckCatalogEntry> = Object.fromEntries(
  *  return null instead of throwing because feature code may render alerts
  *  pulled from an older backend version. */
 export function getCheck(type: string): CheckCatalogEntry | null {
-  return BY_TYPE[type] ?? null
+  return INDEX[type] ?? null
 }
 
 /** Returns every catalog entry whose category matches `category`. The
  *  category drill-in route uses this to list per-AlertType breakdowns and to
  *  filter alerts client-side. */
 export function getChecksInCategory(category: string): CheckCatalogEntry[] {
-  return ENTRIES.filter((entry) => entry.category === category)
+  return ACTIVE.filter((entry) => entry.category === category)
 }
 
 /** Returns every category, in the order they first appear in the catalog. */
 export function getAllCategories(): string[] {
   const seen = new Set<string>()
   const order: string[] = []
-  for (const entry of ENTRIES) {
+  for (const entry of ACTIVE) {
     if (!seen.has(entry.category)) {
       seen.add(entry.category)
       order.push(entry.category)
@@ -1734,7 +1825,13 @@ export function getAllCategories(): string[] {
   return order
 }
 
-/** Returns the full catalog. Mostly used by tests. */
+/** Returns the full catalog (BE-hydrated when available, static otherwise). */
 export function getAllChecks(): readonly CheckCatalogEntry[] {
+  return ACTIVE
+}
+
+/** Returns the static FE-defined entries irrespective of any BE hydration.
+ *  Used by the explorer to fall back when GET /api/catalog 404s. */
+export function getStaticChecks(): readonly CheckCatalogEntry[] {
   return ENTRIES
 }
