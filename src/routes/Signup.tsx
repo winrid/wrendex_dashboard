@@ -14,6 +14,15 @@
 // client_secret); on confirm we kick off the trial subscription via
 // createCheckoutSession and redirect.
 //
+// Tenant invite flow (plan section 14.2): when ?invite=<token> and
+// ?email=<email> are present (set by the AcceptInvite landing page when
+// the recipient clicks "Create account"), we pre-fill the email field and,
+// on a successful signup, call acceptInvite(token) and route the user into
+// the invite's tenant. The invite tenantId becomes the new user's active
+// tenant. Card capture is intentionally skipped on the invite path - the
+// invite recipient is joining an existing workspace, not starting their
+// own trial.
+//
 // Trial-start (now real, BE iter 2 round 1):
 //   - After signupWithOptionalClaim succeeds we call createSetupIntent
 //     against the freshly-created tenantId. The BE returns a real Stripe
@@ -85,6 +94,21 @@ function describeClaimError(status: number): string {
   }
 }
 
+function describeInviteError(status: number): string {
+  switch (status) {
+    case 403:
+      return "Only the invited email can accept this invitation."
+    case 404:
+      return "This invitation is no longer valid."
+    case 410:
+      return "This invitation has expired."
+    case 409:
+      return "This invitation has already been accepted."
+    default:
+      return "We couldn't accept that invitation."
+  }
+}
+
 /** Lazy singleton: load the Stripe.js publishable key once per page. Returns
  *  null when no key is configured (dev / tests) so the caller can fall back
  *  to the no-card path without throwing. */
@@ -110,6 +134,8 @@ export function Signup() {
   const [params] = useSearchParams()
   const claimToken = params.get("claimToken") ?? undefined
   const suggestedTenant = params.get("suggestedTenant") ?? undefined
+  const inviteToken = params.get("invite") ?? undefined
+  const inviteEmail = params.get("email") ?? undefined
   const [serverError, setServerError] = useState<string | null>(null)
   const [pendingCapture, setPendingCapture] = useState<PendingCapture | null>(
     null,
@@ -122,7 +148,7 @@ export function Signup() {
   } = useForm<SignupValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      email: "",
+      email: inviteEmail ?? "",
       password: "",
       tenantName: suggestedTenant ?? "",
     },
@@ -206,6 +232,26 @@ export function Signup() {
     try {
       const result = await auth.signupWithOptionalClaim(values, claimToken)
       pendingTenantIdRef.current = result.tenantId
+
+      // Tenant invite path: accept the invitation now that we have a session,
+      // then route the user into the invite's tenant. The invite tenant
+      // becomes their active tenant (the freshly-created tenant from signup
+      // remains in their memberships but is not the landing target).
+      if (inviteToken) {
+        try {
+          const accepted = await client.acceptInvite(inviteToken)
+          fireSignupCompleted(false)
+          auth.setActiveTenant(accepted.tenantId)
+          navigate(`/t/${accepted.tenantId}/sites`, { replace: true })
+          return
+        } catch (e) {
+          const status = e instanceof ApiError ? e.status : 0
+          toast.error(describeInviteError(status))
+          fireSignupCompleted(false)
+          navigate(`/t/${result.tenantId}/sites`, { replace: true })
+          return
+        }
+      }
 
       // Fast-path B (no claim token): legacy behaviour - no inline card
       // capture, the trial CTA is on /billing.

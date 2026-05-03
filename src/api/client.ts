@@ -6,6 +6,7 @@
 // (TenantController, SiteController, CrawlController, ReportController).
 
 import type {
+  AcceptInviteResponse,
   Alert,
   AlertListParams,
   AlertQueryResult,
@@ -14,6 +15,7 @@ import type {
   AnonymousCrawlFull,
   AnonymousCrawlStartResponse,
   AnonymousCrawlSummary,
+  AuditLogResult,
   AuthLoginRequest,
   AuthLoginResponse,
   AuthSignupRequest,
@@ -26,6 +28,7 @@ import type {
   CrawlRun,
   CreateCheckoutSessionInput,
   CreateCheckoutSessionResponse,
+  CreateInviteInput,
   CreatePortalSessionInput,
   CreatePortalSessionResponse,
   CreateSiteInput,
@@ -35,9 +38,11 @@ import type {
   EmailChannel,
   EmailedSummaryResponse,
   HealthScorePoint,
+  InvitePublicView,
   IssuesSummary,
   LinkExploreParams,
   LinkResult,
+  ListAuditLogParams,
   ListNotificationLogParams,
   Me,
   NotificationLogResult,
@@ -60,6 +65,10 @@ import type {
   StartSlackInstallResponse,
   StatusResponse,
   TeamsChannel,
+  TenantInvite,
+  TenantMember,
+  TransferOwnershipInput,
+  UpdateMemberRoleInput,
   UpdatePagerDutyChannelInput,
   UpdateTeamsChannelInput,
   SiteVerificationConfirmation,
@@ -918,6 +927,134 @@ export function createApiClient(opts: CreateApiClientOptions) {
   }
 
   // -------------------------------------------------------------------------
+  // Team invites + members + audit log (plan section 14.2; phase 3 iter 1 BE).
+  // The accept-invite POST is authenticated; the public GET of the invite
+  // surface is opted out of the global Authorization header so unsigned-in
+  // recipients can preview the invite before they have a session.
+  // -------------------------------------------------------------------------
+
+  function listTenantInvites(tenantId: string): Promise<TenantInvite[]> {
+    return request<TenantInvite[]>(
+      "GET",
+      `/api/tenants/${tenantId}/invites`,
+    )
+  }
+
+  function createInvite(
+    tenantId: string,
+    input: CreateInviteInput,
+  ): Promise<TenantInvite> {
+    return request<TenantInvite>(
+      "POST",
+      `/api/tenants/${tenantId}/invites`,
+      { body: input },
+    )
+  }
+
+  function revokeInvite(
+    tenantId: string,
+    inviteId: string,
+  ): Promise<undefined> {
+    return request<undefined>(
+      "DELETE",
+      `/api/tenants/${tenantId}/invites/${inviteId}`,
+    )
+  }
+
+  /** POST /api/tenants/{tenantId}/invites/{inviteId}/resend. Re-enqueues the
+   *  invitation email; the BE returns the (still-same) invite row. If the BE
+   *  has not shipped this endpoint yet the call surfaces as a 404 ApiError;
+   *  the FE catches that and renders a soft-fail toast. */
+  function resendInvite(
+    tenantId: string,
+    inviteId: string,
+  ): Promise<TenantInvite> {
+    return request<TenantInvite>(
+      "POST",
+      `/api/tenants/${tenantId}/invites/${inviteId}/resend`,
+    )
+  }
+
+  /** PUBLIC. Reads the invite metadata for the recipient before they have
+   *  a session; skipAuth keeps the global Bearer header off the request so
+   *  the BE's auth middleware never sees a stale token. */
+  function getPublicInvite(token: string): Promise<InvitePublicView> {
+    return request<InvitePublicView>(
+      "GET",
+      `/api/invites/${encodeURIComponent(token)}`,
+      { skipAuth: true },
+    )
+  }
+
+  /** AUTH. Accepts the invitation as the currently signed-in user. The BE
+   *  enforces email match server-side and returns 403 if the signed-in
+   *  email does not match the invite. */
+  function acceptInvite(token: string): Promise<AcceptInviteResponse> {
+    return request<AcceptInviteResponse>(
+      "POST",
+      `/api/invites/${encodeURIComponent(token)}/accept`,
+    )
+  }
+
+  function listTenantMembers(tenantId: string): Promise<TenantMember[]> {
+    return request<TenantMember[]>(
+      "GET",
+      `/api/tenants/${tenantId}/members`,
+    )
+  }
+
+  function updateMemberRole(
+    tenantId: string,
+    userId: string,
+    input: UpdateMemberRoleInput,
+  ): Promise<TenantMember> {
+    return request<TenantMember>(
+      "PATCH",
+      `/api/tenants/${tenantId}/members/${userId}/role`,
+      { body: input },
+    )
+  }
+
+  function removeMember(
+    tenantId: string,
+    userId: string,
+  ): Promise<undefined> {
+    return request<undefined>(
+      "DELETE",
+      `/api/tenants/${tenantId}/members/${userId}`,
+    )
+  }
+
+  function transferOwnership(
+    tenantId: string,
+    input: TransferOwnershipInput,
+  ): Promise<undefined> {
+    return request<undefined>(
+      "POST",
+      `/api/tenants/${tenantId}/transfer-ownership`,
+      { body: input },
+    )
+  }
+
+  function listAuditLog(
+    tenantId: string,
+    params: ListAuditLogParams = {},
+  ): Promise<AuditLogResult> {
+    return request<AuditLogResult>(
+      "GET",
+      `/api/tenants/${tenantId}/audit-log`,
+      {
+        query: {
+          page: params.page ?? 0,
+          size: params.size,
+          since: params.since,
+          action: params.action,
+        },
+      },
+    )
+  }
+
+  // -------------------------------------------------------------------------
   // Public catalog (plan section 6 / sec 0.3e iter 2). PUBLIC, no auth.
   // The dashboard's static checkCatalog.ts is the source of truth for
   // human-readable copy; this endpoint is used to surface drift between FE
@@ -1033,6 +1170,18 @@ export function createApiClient(opts: CreateApiClientOptions) {
     getSlackChannel,
     startSlackInstall,
     deleteSlackChannel,
+    // team (phase 3 iter 1 BE)
+    listTenantInvites,
+    createInvite,
+    revokeInvite,
+    resendInvite,
+    getPublicInvite,
+    acceptInvite,
+    listTenantMembers,
+    updateMemberRole,
+    removeMember,
+    transferOwnership,
+    listAuditLog,
     // public surfaces (no auth header)
     getPublicCatalog,
     getStatus,

@@ -1126,3 +1126,116 @@ export type StatusResponse = {
   /** Per-service SLO targets surfaced for the trust strip. */
   sloTargets?: StatusSloTargets
 }
+
+// ---------------------------------------------------------------------------
+// Team management (plan section 14.2 / phase 3 iter 1 BE). Per-tenant invite
+// + member management + audit log surface. Mirrors the BE wire shapes shipped
+// by the parallel BE agent for invites, members, transfer-ownership and audit
+// log endpoints.
+// ---------------------------------------------------------------------------
+
+/** A pending tenant invitation. The invite token is never returned in list /
+ *  create responses (only the recipient sees it via email + the public
+ *  /api/invites/{token} endpoint). */
+export type TenantInvite = {
+  id: string
+  tenantId: string
+  email: string
+  role: Role
+  invitedByUserId: string
+  invitedByEmail: string
+  createdAt: string
+  expiresAt: string
+  acceptedAt?: string | null
+}
+
+/** A current member of the tenant. lastSeenAt is best-effort (BE updates it
+ *  on /api/me hits) and may be null for never-active accounts. */
+export type TenantMember = {
+  userId: string
+  email: string
+  role: Role
+  joinedAt: string
+  lastSeenAt?: string | null
+}
+
+export type CreateInviteInput = {
+  email: string
+  role: Role
+}
+
+export type UpdateMemberRoleInput = {
+  role: Role
+}
+
+export type TransferOwnershipInput = {
+  newOwnerUserId: string
+}
+
+/** Public response of GET /api/invites/{token}. Returned to the recipient
+ *  before they sign in / accept; intentionally narrow (no IDs of internal
+ *  records) so the public surface doesn't leak more than necessary. */
+export type InvitePublicView = {
+  tenantId: string
+  tenantName: string
+  email: string
+  role: Role
+  invitedByEmail: string
+  expiresAt?: string | null
+}
+
+/** Response of POST /api/invites/{token}/accept. The dashboard uses these to
+ *  route the user into their newly-joined tenant. */
+export type AcceptInviteResponse = {
+  tenantId: string
+  role: Role
+}
+
+/** Audit log action codes. Free-form on the wire so new BE-side actions
+ *  don't break the FE; the canonical set is enumerated here for select-
+ *  filter affordances. */
+export type AuditAction =
+  | "INVITE_CREATED"
+  | "INVITE_REVOKED"
+  | "INVITE_ACCEPTED"
+  | "INVITE_RESENT"
+  | "MEMBER_ROLE_CHANGED"
+  | "MEMBER_REMOVED"
+  | "OWNERSHIP_TRANSFERRED"
+  | "TENANT_UPDATED"
+  | "SITE_CREATED"
+  | "SITE_DELETED"
+  | string
+
+export type AuditLogEntry = {
+  id: string
+  tenantId: string
+  /** User id of the actor; null for system-driven events. */
+  actorUserId?: string | null
+  /** Best-effort actor email captured at the time of the event. */
+  actorEmail?: string | null
+  action: AuditAction
+  /** Type of the target object (e.g. "INVITE", "MEMBER", "SITE"). */
+  targetType?: string | null
+  targetId?: string | null
+  /** Free-form bag of action-specific metadata (e.g. {role: "ADMIN"}). */
+  details?: Record<string, unknown> | null
+  /** ISO 8601 timestamp of the event. */
+  createdAt: string
+}
+
+export type AuditLogResult = {
+  items: AuditLogEntry[]
+  total: number
+  page: number
+  size: number
+}
+
+export type ListAuditLogParams = {
+  page?: number
+  size?: number
+  /** ISO 8601 lower bound for `createdAt`. */
+  since?: string
+  /** Single-action filter (BE accepts one value per param). */
+  action?: AuditAction
+}

@@ -183,6 +183,23 @@ external component libraries.
   component cards (API / Crawler / Scheduler / Mongo) with operational /
   degraded / down badges + metric line. Falls back to a "coming soon"
   placeholder when the BE 404s.
+- `/accept-invite` - public landing for tenant invitations (sec 14.2).
+  Reads `?token=...`; on mount calls `getPublicInvite(token)` (skipAuth)
+  and dispatches into one of: not-found (404), expired (410), already-
+  accepted (409), signed-out (sign-in / sign-up CTAs that round-trip the
+  token), signed-in-mismatch (sign-out CTA), signed-in-match (Accept
+  button calling `acceptInvite(token)`). Mounts above RequireAuth.
+- `/t/:tenantId/team` - Team page (sec 14.2). Tabs: Members, Invites,
+  Audit log. Members tab is bound to `listTenantMembers` with per-row
+  Change role / Remove / Make owner actions (transfer ownership flow);
+  the sole-OWNER guard disables actions that would leave the tenant
+  ownerless. Invites tab is bound to `listTenantInvites` with Resend
+  (soft-fails on 404 since `resendInvite` is BE-optional) + Revoke.
+  Audit log tab is bound to `listAuditLog` with action + since-window
+  filters. Invite-member dialog (`src/components/team/InviteMemberDialog`)
+  is reused across Members and Invites tabs and surfaces inline errors
+  for 409 (duplicate pending) and a seat-cap upsell for 403/409 with a
+  seat-hint message body.
 
 ## Inbox bulk-action surface (sec 3, FE-D)
 

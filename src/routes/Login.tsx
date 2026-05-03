@@ -11,6 +11,13 @@
 // the claimed site. Mirrors signupWithOptionalClaim's soft-failure
 // handling: on claim error we toast and still complete the login by
 // landing on the tenant's sites list.
+//
+// ?invite= handoff (plan section 14.2): same pattern. When the recipient
+// of a tenant invitation clicks "Sign in" on the AcceptInvite page they
+// land here with ?invite=<token>; on successful login we call
+// acceptInvite(token) and navigate them into the joined tenant. Soft-fail
+// the same way as the claim path: toast and route into the user's
+// existing tenant when accept fails so they don't get stranded.
 
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom"
 import { useState } from "react"
@@ -63,6 +70,21 @@ function describeClaimError(status: number): string {
   }
 }
 
+function describeInviteError(status: number): string {
+  switch (status) {
+    case 403:
+      return "Only the invited email can accept this invitation."
+    case 404:
+      return "This invitation is no longer valid."
+    case 410:
+      return "This invitation has expired."
+    case 409:
+      return "This invitation has already been accepted."
+    default:
+      return "We couldn't accept that invitation. Please try again from the invite link."
+  }
+}
+
 export function Login() {
   const auth = useAuth()
   const client = useApiClient()
@@ -70,6 +92,7 @@ export function Login() {
   const [params] = useSearchParams()
   const next = safeNext(params.get("next"))
   const claimToken = params.get("claimToken") ?? undefined
+  const inviteToken = params.get("invite") ?? undefined
   const [serverError, setServerError] = useState<string | null>(null)
 
   const {
@@ -89,6 +112,22 @@ export function Login() {
     setServerError(null)
     try {
       const me = await auth.login(values)
+
+      // If the user arrived from a tenant invite link, accept it and route
+      // them into the joined tenant. Mirrors the claimToken handling: on
+      // failure toast + fall through to the next-redirect path so the user
+      // still ends up signed in somewhere sensible.
+      if (inviteToken) {
+        try {
+          const accepted = await client.acceptInvite(inviteToken)
+          navigate(`/t/${accepted.tenantId}/sites`, { replace: true })
+          return
+        } catch (e) {
+          const status = e instanceof ApiError ? e.status : 0
+          toast.error(describeInviteError(status))
+          // Fall through; the user is signed in either way.
+        }
+      }
 
       // If the user arrived from the anonymous-crawl teaser, link the audit
       // into their tenant before routing. Mirrors signupWithOptionalClaim's

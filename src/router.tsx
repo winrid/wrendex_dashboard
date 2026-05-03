@@ -36,6 +36,7 @@ import { Audit } from "@/routes/Audit"
 import { AnonymousCrawlTeaser } from "@/routes/AnonymousCrawlTeaser"
 import { AnonymousCrawlClaiming } from "@/routes/AnonymousCrawlClaiming"
 import { Status } from "@/routes/Status"
+import { AcceptInvite } from "@/routes/AcceptInvite"
 
 // Public routes mount above RequireAuth so unauthenticated users can reach
 // them without being bounced to /login. Everything else lives inside the
@@ -57,6 +58,10 @@ export const router = createBrowserRouter([
   // RequireAuth so the marketing trust strip can deep-link unauthenticated
   // visitors here.
   { path: "/status", element: <Status /> },
+  // Accept-invite landing page (plan section 14.2). PUBLIC; the recipient
+  // clicks the email link and lands here with ?token=... before they have
+  // signed in.
+  { path: "/accept-invite", element: <AcceptInvite /> },
   {
     path: "/",
     element: (
