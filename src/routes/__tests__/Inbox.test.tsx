@@ -38,17 +38,21 @@ vi.mock("@/api/useApiClient", () => ({
   }),
 }))
 
-vi.mock("@/auth/AuthProvider", () => ({
-  useAuth: () => ({
-    user: { id: "u_1", email: "user@example.com", createdAt: "2026-04-30T00:00:00Z" },
-    memberships: [
-      { tenantId: "t_1", tenantName: "Acme", role: "OWNER" as const },
-    ],
-    activeTenantId: "t_1",
-    isAuthed: true,
-    isLoading: false,
-  }),
-}))
+vi.mock("@/auth/AuthProvider", async () => {
+  const { createContext } = await import("react")
+  return {
+    useAuth: () => ({
+      user: { id: "u_1", email: "user@example.com", createdAt: "2026-04-30T00:00:00Z" },
+      memberships: [
+        { tenantId: "t_1", tenantName: "Acme", role: "OWNER" as const },
+      ],
+      activeTenantId: "t_1",
+      isAuthed: true,
+      isLoading: false,
+    }),
+    AuthContext: createContext<unknown>(null),
+  }
+})
 
 import { Inbox } from "../Inbox"
 

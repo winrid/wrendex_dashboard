@@ -60,9 +60,35 @@ import {
   membershipsToMembers,
 } from "@/components/alerts-table/BulkActionToolbar"
 import { CsvExportButton } from "@/components/csv/CsvExportButton"
+import { SavedViewMenu } from "@/components/saved-views/SavedViewMenu"
+import { consumePendingSavedView } from "@/components/saved-views/handoff"
 import { siteDisplayName } from "@/lib/format"
 
 type TabKey = "open" | "snoozed" | "resolved"
+
+/** Stable React Router URL pattern for SavedView.route on the Inbox surface.
+ *  Bound to the same path the router mounts under. */
+const INBOX_ROUTE = "/inbox"
+
+type InboxFilter = {
+  tab: TabKey
+  siteId: string | null
+  pagination: PaginationState
+  sorting: SortingState
+  toolbar: AlertsTableToolbarState
+}
+
+function isInboxFilter(v: unknown): v is InboxFilter {
+  if (!v || typeof v !== "object") return false
+  const o = v as Partial<InboxFilter>
+  return (
+    typeof o.tab === "string" &&
+    (o.siteId === null || typeof o.siteId === "string") &&
+    Boolean(o.pagination) &&
+    Array.isArray(o.sorting) &&
+    Boolean(o.toolbar)
+  )
+}
 
 // SNOOZED is a typed status on the wire (BE iter 3 will land it). The cast
 // keeps the param wiring simple; the BE accepts any AlertStatus for the
@@ -121,6 +147,34 @@ export function Inbox() {
   const [toolbar, setToolbar] = useState<AlertsTableToolbarState>(DEFAULT_TOOLBAR)
   const [openAlert, setOpenAlert] = useState<Alert | null>(null)
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
+
+  // Sidebar -> route handoff (saved-view group on AppShell). Apply once on
+  // mount if the sidebar stashed an Inbox filter for us.
+  useEffect(() => {
+    const pending = consumePendingSavedView(INBOX_ROUTE)
+    if (isInboxFilter(pending)) {
+      setTab(pending.tab)
+      setSiteId(pending.siteId)
+      setPagination(pending.pagination)
+      setSorting(pending.sorting)
+      setToolbar(pending.toolbar)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const currentSavedFilter = useMemo<InboxFilter>(
+    () => ({ tab, siteId, pagination, sorting, toolbar }),
+    [tab, siteId, pagination, sorting, toolbar],
+  )
+
+  const onApplySavedView = (raw: unknown) => {
+    if (!isInboxFilter(raw)) return
+    setTab(raw.tab)
+    setSiteId(raw.siteId)
+    setPagination(raw.pagination)
+    setSorting(raw.sorting)
+    setToolbar(raw.toolbar)
+  }
 
   const sitesQ = useQuery({
     queryKey: ["sites", tenantId],
@@ -363,6 +417,12 @@ export function Inbox() {
               </select>
             </label>
           ) : null}
+          <SavedViewMenu
+            siteId={siteId ?? undefined}
+            route={INBOX_ROUTE}
+            currentFilter={currentSavedFilter}
+            onApply={onApplySavedView}
+          />
           {siteId ? (
             <CsvExportButton
               path={`/api/sites/${siteId}/alerts`}

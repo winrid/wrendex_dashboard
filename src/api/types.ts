@@ -1488,6 +1488,81 @@ export type UpdateChangelogEntryInput = {
   publishedAt?: string | null
 }
 
+// ---------------------------------------------------------------------------
+// Saved views (plan section P4 iter 1). Per-user (or shared) named segments
+// that capture a DataTable surface's current filter+sort+pagination state.
+// `route` is a stable React Router URL pattern (e.g.
+// "/sites/:siteId/crawls/:crawlId/pages") rather than the resolved URL, so
+// the same segment can re-apply across different sites / crawls. filterJson
+// is a serialised JSON blob owned by the consumer (the SavedViewMenu hands
+// it back via its onApply callback verbatim); the BE never inspects it.
+// ---------------------------------------------------------------------------
+
+export type SavedView = {
+  id: string
+  tenantId: string
+  /** Optional site scope. null when the view is tenant-wide (e.g. cross-site
+   *  Inbox segments). */
+  siteId: string | null
+  ownerUserId: string
+  name: string
+  /** React Router URL pattern this view applies to. Stable across resolved
+   *  URLs (no concrete ids baked in). */
+  route: string
+  /** Opaque JSON-serialised filter+sort+pagination state. The BE persists
+   *  it as a string and never inspects the contents. */
+  filterJson: string
+  /** When true, every member of the tenant sees the view. Owner can still
+   *  edit/delete. */
+  shared: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export type CreateSavedViewInput = {
+  /** Optional site scope; omit / null for tenant-wide views. */
+  siteId?: string | null
+  name: string
+  route: string
+  filterJson: string
+  shared?: boolean
+}
+
+export type UpdateSavedViewInput = {
+  name?: string
+  filterJson?: string
+  shared?: boolean
+}
+
+export type ListSavedViewsParams = {
+  /** Narrow the list to a single site scope. Omit to list all tenant-scoped
+   *  + tenant-wide views. */
+  siteId?: string
+  /** Narrow the list to a single route pattern. Used by per-route surfaces
+   *  (Page Explorer, Inbox, etc.) to fetch only the segments for that
+   *  surface. */
+  route?: string
+}
+
+// ---------------------------------------------------------------------------
+// Spot audits (plan section P4 iter 1). Ad-hoc audit of a hand-picked URL
+// list, capped at 1000 URLs. The BE returns a queued CrawlRun with
+// origin="spot-audit" and seedUrls echoed back; the FE navigates to the
+// crawl detail page where the existing crawl-history listing surfaces the
+// run once it appears.
+// ---------------------------------------------------------------------------
+
+export type StartSpotAuditInput = {
+  urls: string[]
+}
+
+export type StartSpotAuditResponse = CrawlRun & {
+  /** Always "spot-audit" for runs queued via this endpoint. */
+  origin?: string
+  /** Echo of the URL list the FE submitted. */
+  seedUrls?: string[]
+}
+
 export type SharedLinkPayload = {
   site?: Site | null
   crawlRun?: CrawlRun | null

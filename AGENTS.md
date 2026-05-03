@@ -345,6 +345,53 @@ Per-tenant alert channels, ordered by ship date:
   current-password field, 400 against the new-password field, 204 toasts
   success.
 
+## Saved views pattern (P4 iter 1)
+
+Any DataTable surface can opt into named filter+sort+pagination segments
+via `<SavedViewMenu>` from `src/components/saved-views/SavedViewMenu.tsx`.
+The consumer hands the menu three pieces:
+
+- `route` - a stable React Router URL pattern (e.g.
+  `/sites/:siteId/crawls/:crawlId/pages`), NOT the resolved URL. The same
+  segment can re-apply across different sites/crawls.
+- `currentFilter` - any JSON-serialisable snapshot of the surface's state.
+  The menu treats it as opaque; the consumer owns the shape.
+- `onApply(filter)` - called with the parsed snapshot when the user picks
+  a segment. The consumer is responsible for slotting it back into local
+  state and validating it (use a typeguard - ill-formed JSON is possible
+  if a schema rev lands later).
+
+The persisted row (`SavedView`) lives behind the typed-client methods
+`listSavedViews / createSavedView / updateSavedView / deleteSavedView`.
+Page Explorer + Inbox ship in v1; other DataTable surfaces can opt in
+incrementally.
+
+The AppShell sidebar mounts a "Saved views" group below the static nav
+that lists the active tenant's segments scoped to the current site (or
+tenant-wide when no site context). Click stashes the parsed filter via
+`stashPendingSavedView` from
+`src/components/saved-views/handoff.ts`, resolves any `:crawlId` in the
+route by reading `listCrawlsBySite` (latest completed run wins), and
+navigates to the resolved URL. The destination route reads the handoff
+on mount via `consumePendingSavedView(route)` and applies it once.
+
+## Spot-audit launcher (P4 iter 1)
+
+`/t/:tenantId/sites/:siteId/spot-audit` is a single-form route that POSTs
+`startSpotAudit(siteId, {urls})` after splitting a textarea / uploaded
+.txt file on newlines. Validation:
+
+- Cap at 1000 URLs (matches the BE cap).
+- Each URL must be HTTP / HTTPS (hard error).
+- URLs that don't share the site's hostname are warned, not blocked
+  (the BE 400s on hostname mismatch; the FE surfaces that response).
+
+On 202 the route navigates to
+`/t/:tenantId/sites/:siteId/crawls/:crawlRunId`; the existing crawl-
+history listing surfaces the new run once the worker picks it up. A
+"Spot audit" button on the SiteDetail header (next to "Run audit now")
+opens the form.
+
 ## Funnel telemetry contract (sec 2.0 + 16)
 
 - Sink: `client.sendTelemetry(events)` -> `POST /api/telemetry/events`

@@ -94,7 +94,7 @@ export type AuthContextValue = {
   refresh: () => Promise<void>
 }
 
-const AuthContext = createContext<AuthContextValue | null>(null)
+export const AuthContext = createContext<AuthContextValue | null>(null)
 
 export type AuthProviderProps = {
   children: ReactNode

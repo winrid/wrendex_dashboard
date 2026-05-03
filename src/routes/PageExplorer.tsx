@@ -8,7 +8,7 @@
 // than one is selected we filter on the loaded page client-side and let the
 // user know via the toolbar count badge.
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import {
@@ -25,6 +25,8 @@ import { DataTable } from "@/components/data-table/DataTable"
 import { CsvExportButton } from "@/components/csv/CsvExportButton"
 import { PdfExportButton } from "@/components/pdf/PdfExportButton"
 import { ShareButton } from "@/components/share/ShareButton"
+import { SavedViewMenu } from "@/components/saved-views/SavedViewMenu"
+import { consumePendingSavedView } from "@/components/saved-views/handoff"
 import { Badge } from "@/components/ui/badge-fallback"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,6 +43,33 @@ import { formatBytes } from "@/lib/format"
 
 const STATUS_CODE_OPTIONS = [200, 301, 302, 404, 500] as const
 const PAGE_SIZE = 50
+
+/** Stable React Router URL pattern for SavedView.route. Bound to the same
+ *  path the router mounts; using the pattern (not the resolved URL) lets a
+ *  saved segment re-apply across different sites/crawls. */
+const PAGE_EXPLORER_ROUTE = "/sites/:siteId/crawls/:crawlId/pages"
+
+/** Shape we serialise into SavedView.filterJson for this surface. Owned by
+ *  the route, not by the SavedViewMenu (the menu treats it as opaque). */
+type PageExplorerFilter = {
+  pageIndex: number
+  pageSize: number
+  sorting: SortingState
+  statusCodes: number[]
+  urlContains: string
+}
+
+function isPageExplorerFilter(v: unknown): v is PageExplorerFilter {
+  if (!v || typeof v !== "object") return false
+  const o = v as Partial<PageExplorerFilter>
+  return (
+    typeof o.pageIndex === "number" &&
+    typeof o.pageSize === "number" &&
+    Array.isArray(o.sorting) &&
+    Array.isArray(o.statusCodes) &&
+    typeof o.urlContains === "string"
+  )
+}
 
 function statusCodeBadgeClass(code: number): string {
   if (code >= 200 && code < 300)
@@ -90,6 +119,41 @@ export function PageExplorer() {
   const [sorting, setSorting] = useState<SortingState>([])
   const [statusCodes, setStatusCodes] = useState<number[]>([])
   const [urlContains, setUrlContains] = useState("")
+
+  // Sidebar -> route handoff (saved-view group on AppShell). When the user
+  // clicks a saved-view in the sidebar, the handoff stashes the filter in
+  // sessionStorage; we read + apply it once on mount.
+  useEffect(() => {
+    const pending = consumePendingSavedView(PAGE_EXPLORER_ROUTE)
+    if (isPageExplorerFilter(pending)) {
+      applyPageExplorerFilter(pending)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const currentFilter = useMemo<PageExplorerFilter>(
+    () => ({
+      pageIndex: pagination.pageIndex,
+      pageSize: pagination.pageSize,
+      sorting,
+      statusCodes,
+      urlContains,
+    }),
+    [pagination, sorting, statusCodes, urlContains],
+  )
+
+  function applyPageExplorerFilter(next: PageExplorerFilter) {
+    setPagination({ pageIndex: next.pageIndex, pageSize: next.pageSize })
+    setSorting(next.sorting)
+    setStatusCodes(next.statusCodes)
+    setUrlContains(next.urlContains)
+  }
+
+  const onApplySavedView = (raw: unknown) => {
+    if (isPageExplorerFilter(raw)) {
+      applyPageExplorerFilter(raw)
+    }
+  }
 
   // BE accepts a single statusCode; pass it through only when exactly one is
   // selected. With more than one we drop the filter and apply it client-side
@@ -320,6 +384,8 @@ export function PageExplorer() {
         crawlId={crawlId}
         siteId={siteId}
         tenantId={tenantId}
+        currentFilter={currentFilter}
+        onApplySavedView={onApplySavedView}
       />
 
       <DataTable<PageRow>
@@ -374,6 +440,8 @@ type ToolbarProps = {
   crawlId: string
   siteId: string
   tenantId: string
+  currentFilter: PageExplorerFilter
+  onApplySavedView: (filter: unknown) => void
 }
 
 function Toolbar({
@@ -385,6 +453,8 @@ function Toolbar({
   crawlId,
   siteId,
   tenantId,
+  currentFilter,
+  onApplySavedView,
 }: ToolbarProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -426,6 +496,12 @@ function Toolbar({
       </DropdownMenu>
 
       <div className="ml-auto flex items-center gap-2">
+        <SavedViewMenu
+          siteId={siteId}
+          route={PAGE_EXPLORER_ROUTE}
+          currentFilter={currentFilter}
+          onApply={onApplySavedView}
+        />
         <CsvExportButton
           path={`/api/crawls/${crawlId}/pages/explore`}
           params={csvParams}

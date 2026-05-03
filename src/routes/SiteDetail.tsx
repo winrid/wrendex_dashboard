@@ -13,7 +13,7 @@ import { isApiError } from "@/api/client"
 import type { CrawlRun } from "@/api/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge-fallback"
-import { ExternalLinkIcon, PlayIcon, PauseIcon } from "lucide-react"
+import { ExternalLinkIcon, PlayIcon, PauseIcon, ZapIcon } from "lucide-react"
 import { HealthRing } from "@/components/health-ring/HealthRing"
 import { HealthSparkline } from "@/components/site-detail/HealthSparkline"
 import { IssueQueue } from "@/components/site-detail/IssueQueue"
@@ -219,6 +219,12 @@ export function SiteDetail() {
               >
                 <PlayIcon />
                 <span>Run audit now</span>
+              </Button>
+              <Button asChild size="sm" variant="outline">
+                <Link to={`/t/${tenantId}/sites/${siteId}/spot-audit`}>
+                  <ZapIcon />
+                  <span>Spot audit</span>
+                </Link>
               </Button>
               <Button
                 size="sm"

@@ -3,6 +3,7 @@ import { AppShell } from "@/components/layout/AppShell"
 import { RequireAuth } from "@/auth/RequireAuth"
 import { Sites } from "@/routes/Sites"
 import { SiteDetail } from "@/routes/SiteDetail"
+import { SpotAudit } from "@/routes/SpotAudit"
 import { CrawlHistory } from "@/routes/CrawlHistory"
 import { CrawlComparison } from "@/routes/CrawlComparison"
 import { NotificationLog } from "@/routes/NotificationLog"
@@ -106,6 +107,7 @@ export const router = createBrowserRouter([
       { path: "sites", element: <Sites /> },
       { path: "sites/:siteId", element: <SiteDetail /> },
       { path: "sites/:siteId/settings", element: <SiteSettings /> },
+      { path: "sites/:siteId/spot-audit", element: <SpotAudit /> },
       { path: "sites/:siteId/compare", element: <CrawlComparison /> },
       { path: "sites/:siteId/pages", element: <PageDetail /> },
       { path: "sites/:siteId/health-history", element: <HealthHistory /> },

@@ -52,6 +52,7 @@ import type {
   ListAuditLogParams,
   ListNotificationLogParams,
   ListPublishedChangelogParams,
+  ListSavedViewsParams,
   ListShareLinksParams,
   Me,
   NotificationLogResult,
@@ -67,6 +68,7 @@ import type {
   ResendNotificationResponse,
   ResolveShareInput,
   ResourcesResult,
+  SavedView,
   SetupIntent,
   ShareLink,
   SharedLinkResult,
@@ -75,6 +77,8 @@ import type {
   SlackChannel,
   StartSlackInstallInput,
   StartSlackInstallResponse,
+  StartSpotAuditInput,
+  StartSpotAuditResponse,
   StatusResponse,
   TeamsChannel,
   TenantBranding,
@@ -95,6 +99,8 @@ import type {
   UpdateAlertRuleInput,
   UpdateChangelogEntryInput,
   UpdateEmailChannelInput,
+  UpdateSavedViewInput,
+  CreateSavedViewInput,
   UpdateSiteInput,
   UpdateSiteScheduleInput,
   UpdateTenantBrandingInput,
@@ -1248,6 +1254,82 @@ export function createApiClient(opts: CreateApiClientOptions) {
     return request<undefined>("DELETE", `/api/admin/changelog/${id}`)
   }
 
+  // -------------------------------------------------------------------------
+  // Saved views (plan section P4 iter 1). Per-tenant CRUD over the persisted
+  // SavedView rows. The list endpoint returns the user's own views plus any
+  // shared views in the same tenant; ?siteId= and ?route= narrow the result
+  // so per-surface menus only fetch what they need.
+  // -------------------------------------------------------------------------
+
+  function listSavedViews(
+    tenantId: string,
+    params: ListSavedViewsParams = {},
+  ): Promise<SavedView[]> {
+    return request<SavedView[]>(
+      "GET",
+      `/api/tenants/${tenantId}/saved-views`,
+      {
+        query: {
+          siteId: params.siteId,
+          route: params.route,
+        },
+      },
+    )
+  }
+
+  function createSavedView(
+    tenantId: string,
+    input: CreateSavedViewInput,
+  ): Promise<SavedView> {
+    return request<SavedView>(
+      "POST",
+      `/api/tenants/${tenantId}/saved-views`,
+      { body: input },
+    )
+  }
+
+  function updateSavedView(
+    tenantId: string,
+    id: string,
+    patch: UpdateSavedViewInput,
+  ): Promise<SavedView> {
+    return request<SavedView>(
+      "PATCH",
+      `/api/tenants/${tenantId}/saved-views/${id}`,
+      { body: patch },
+    )
+  }
+
+  function deleteSavedView(
+    tenantId: string,
+    id: string,
+  ): Promise<undefined> {
+    return request<undefined>(
+      "DELETE",
+      `/api/tenants/${tenantId}/saved-views/${id}`,
+    )
+  }
+
+  // -------------------------------------------------------------------------
+  // Spot audits (plan section P4 iter 1). POST /api/sites/{siteId}/spot-audits
+  // queues a CrawlRun with origin="spot-audit" + the supplied seed URLs.
+  // The BE caps the URL list at 1000, requires every URL to share the site
+  // hostname, and respects the tenant plan's pagesPerAudit gate (403 with an
+  // upsell message when the cap would be exceeded). Returns 202 Accepted with
+  // the queued CrawlRun.
+  // -------------------------------------------------------------------------
+
+  function startSpotAudit(
+    siteId: string,
+    input: StartSpotAuditInput,
+  ): Promise<StartSpotAuditResponse> {
+    return request<StartSpotAuditResponse>(
+      "POST",
+      `/api/sites/${siteId}/spot-audits`,
+      { body: input },
+    )
+  }
+
   return {
     // auth
     signup,
@@ -1373,6 +1455,13 @@ export function createApiClient(opts: CreateApiClientOptions) {
     createChangelogEntry,
     updateChangelogEntry,
     deleteChangelogEntry,
+    // saved views (P4 iter 1)
+    listSavedViews,
+    createSavedView,
+    updateSavedView,
+    deleteSavedView,
+    // spot audits (P4 iter 1)
+    startSpotAudit,
   } as const
 }
 
