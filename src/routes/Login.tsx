@@ -1,10 +1,18 @@
-// Public login page. Plan section 0.3a.
+// Public login page. Plan section 0.3a + P4 iter 2 (2FA second-step).
 //
-// React Hook Form + Zod for client-side validation. On submit we delegate
-// to useAuth().login(); the AuthProvider hydrates /api/me and exposes the
-// new session before we navigate. ApiError(401) surfaces as an inline
-// "invalid credentials" message; any other failure surfaces as a generic
-// retry hint - users should not be told whether the email exists.
+// React Hook Form + Zod for client-side validation. On submit we call
+// client.login() directly (rather than useAuth().login) so we can branch on
+// the discriminated AuthLoginResponse: a `twoFactorRequired: true` shape
+// keeps the session pending, swaps the form to the 6-digit code view, and
+// never persists the short-lived pendingToken to localStorage. Once the
+// user supplies the code we call login2fa({pendingToken, code}); on success
+// the BE returns a real sessionToken which we then route through the auth
+// provider so /api/me hydrates and downstream guards see the new session.
+//
+// ApiError(401) on the password step surfaces as an inline "invalid
+// credentials" message; on the 2FA step it surfaces as "That code is
+// incorrect." Any other failure surfaces as a generic retry hint - users
+// should not be told whether the email exists.
 //
 // ?claimToken= handoff (plan section 2.0): when present, we call
 // claimAnonymousCrawl after a successful login and route the user into
@@ -28,6 +36,7 @@ import { toast } from "sonner"
 import { ApiError } from "@/api/client"
 import { useApiClient } from "@/api/useApiClient"
 import { useAuth } from "@/auth/AuthProvider"
+import type { Me } from "@/api/types"
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -95,6 +104,15 @@ export function Login() {
   const inviteToken = params.get("invite") ?? undefined
   const [serverError, setServerError] = useState<string | null>(null)
 
+  // 2FA second-step state. When pendingToken is non-null the form swaps to
+  // the code-entry view; the password is already validated server-side and
+  // the only thing left is to prove the user has their TOTP device.
+  const [pendingToken, setPendingToken] = useState<string | null>(null)
+  const [twoFactorMode, setTwoFactorMode] = useState<"totp" | "backup">("totp")
+  const [twoFactorCode, setTwoFactorCode] = useState("")
+  const [twoFactorError, setTwoFactorError] = useState<string | null>(null)
+  const [twoFactorSubmitting, setTwoFactorSubmitting] = useState(false)
+
   const {
     register,
     handleSubmit,
@@ -108,53 +126,56 @@ export function Login() {
     return <Navigate to={next} replace />
   }
 
-  const onSubmit = handleSubmit(async (values) => {
-    setServerError(null)
-    try {
-      const me = await auth.login(values)
+  // Shared post-login routing: invite -> claim -> next. Used after both the
+  // password-only path and the 2FA second-step path so the two flows behave
+  // identically once a real session is in hand.
+  const finishLogin = async (me: Me) => {
+    if (inviteToken) {
+      try {
+        const accepted = await client.acceptInvite(inviteToken)
+        navigate(`/t/${accepted.tenantId}/sites`, { replace: true })
+        return
+      } catch (e) {
+        const status = e instanceof ApiError ? e.status : 0
+        toast.error(describeInviteError(status))
+        // Fall through; the user is signed in either way.
+      }
+    }
 
-      // If the user arrived from a tenant invite link, accept it and route
-      // them into the joined tenant. Mirrors the claimToken handling: on
-      // failure toast + fall through to the next-redirect path so the user
-      // still ends up signed in somewhere sensible.
-      if (inviteToken) {
+    if (claimToken) {
+      const tenantId = me.activeTenantId ?? me.memberships[0]?.tenantId ?? null
+      if (tenantId) {
         try {
-          const accepted = await client.acceptInvite(inviteToken)
-          navigate(`/t/${accepted.tenantId}/sites`, { replace: true })
+          const claim = await client.claimAnonymousCrawl(claimToken, tenantId)
+          navigate(`/t/${tenantId}/sites/${claim.siteId}`, { replace: true })
           return
         } catch (e) {
           const status = e instanceof ApiError ? e.status : 0
-          toast.error(describeInviteError(status))
-          // Fall through; the user is signed in either way.
+          toast.error(describeClaimError(status))
+          navigate(`/t/${tenantId}/sites`, { replace: true })
+          return
         }
       }
+      // No active tenant - fall through to the next-redirect path; the
+      // RootRedirect under RequireAuth will resolve a tenant.
+    }
 
-      // If the user arrived from the anonymous-crawl teaser, link the audit
-      // into their tenant before routing. Mirrors signupWithOptionalClaim's
-      // soft-failure handling: on any error we toast + still land them in
-      // their workspace.
-      if (claimToken) {
-        const tenantId = me.activeTenantId ?? me.memberships[0]?.tenantId ?? null
-        if (tenantId) {
-          try {
-            const claim = await client.claimAnonymousCrawl(
-              claimToken,
-              tenantId,
-            )
-            navigate(`/t/${tenantId}/sites/${claim.siteId}`, { replace: true })
-            return
-          } catch (e) {
-            const status = e instanceof ApiError ? e.status : 0
-            toast.error(describeClaimError(status))
-            navigate(`/t/${tenantId}/sites`, { replace: true })
-            return
-          }
-        }
-        // No active tenant - fall through to the next-redirect path; the
-        // RootRedirect under RequireAuth will resolve a tenant.
+    navigate(next, { replace: true })
+  }
+
+  const onSubmit = handleSubmit(async (values) => {
+    setServerError(null)
+    try {
+      const res = await auth.login(values)
+      if ("twoFactorRequired" in res && res.twoFactorRequired === true) {
+        setPendingToken(res.pendingToken)
+        setTwoFactorMode("totp")
+        setTwoFactorCode("")
+        setTwoFactorError(null)
+        return
       }
-
-      navigate(next, { replace: true })
+      // Full session: res is a Me snapshot.
+      await finishLogin(res as Me)
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         setServerError("Invalid email or password")
@@ -164,69 +185,179 @@ export function Login() {
     }
   })
 
+  const submitTwoFactor = async () => {
+    if (!pendingToken) return
+    setTwoFactorError(null)
+    const trimmed = twoFactorCode.trim()
+    if (!trimmed) {
+      setTwoFactorError(
+        twoFactorMode === "backup"
+          ? "Enter your 8-character backup code."
+          : "Enter your 6-digit code.",
+      )
+      return
+    }
+    setTwoFactorSubmitting(true)
+    try {
+      const me = await auth.login2fa({ pendingToken, code: trimmed })
+      await finishLogin(me)
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        setTwoFactorError("That code is incorrect.")
+      } else if (e instanceof ApiError && e.status === 410) {
+        // The pending session expired (BE TTL elapsed). Bounce the user
+        // back to the password step with a friendly message.
+        setPendingToken(null)
+        setServerError(
+          "Your sign-in session expired. Please enter your password again.",
+        )
+      } else {
+        setTwoFactorError("Something went wrong. Please try again.")
+      }
+    } finally {
+      setTwoFactorSubmitting(false)
+    }
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
       <Toaster />
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>Sign in to Wrendex</CardTitle>
+          <CardTitle>
+            {pendingToken
+              ? "Two-factor authentication"
+              : "Sign in to Wrendex"}
+          </CardTitle>
           <CardDescription>
-            Welcome back. Enter your credentials to continue.
+            {pendingToken
+              ? twoFactorMode === "backup"
+                ? "Enter one of your 8-character backup codes."
+                : "Enter the 6-digit code from your authenticator app."
+              : "Welcome back. Enter your credentials to continue."}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form className="space-y-4" onSubmit={onSubmit} noValidate>
-            <div className="space-y-1.5">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                autoComplete="email"
-                aria-invalid={errors.email ? true : undefined}
-                {...register("email")}
-              />
-              {errors.email ? (
-                <p className="text-xs text-destructive">{errors.email.message}</p>
-              ) : null}
-            </div>
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password">Password</Label>
-                <Link
-                  to="/forgot-password"
-                  className="text-xs text-muted-foreground hover:underline"
-                >
-                  Forgot password?
-                </Link>
+          {pendingToken ? (
+            <form
+              className="space-y-4"
+              onSubmit={(e) => {
+                e.preventDefault()
+                void submitTwoFactor()
+              }}
+              noValidate
+              data-testid="two-factor-form"
+            >
+              <div className="space-y-1.5">
+                <Label htmlFor="two-factor-code">
+                  {twoFactorMode === "backup" ? "Backup code" : "6-digit code"}
+                </Label>
+                <Input
+                  id="two-factor-code"
+                  data-testid="two-factor-code"
+                  type="text"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  inputMode={twoFactorMode === "backup" ? "text" : "numeric"}
+                  pattern={
+                    twoFactorMode === "backup"
+                      ? "[A-Za-z0-9]{8}"
+                      : "[0-9]{6}"
+                  }
+                  maxLength={twoFactorMode === "backup" ? 8 : 6}
+                  value={twoFactorCode}
+                  onChange={(e) => {
+                    setTwoFactorCode(e.target.value)
+                    setTwoFactorError(null)
+                  }}
+                  aria-invalid={twoFactorError ? true : undefined}
+                />
+                {twoFactorError ? (
+                  <p
+                    className="text-xs text-destructive"
+                    data-testid="two-factor-error"
+                  >
+                    {twoFactorError}
+                  </p>
+                ) : null}
               </div>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                aria-invalid={errors.password ? true : undefined}
-                {...register("password")}
-              />
-              {errors.password ? (
-                <p className="text-xs text-destructive">
-                  {errors.password.message}
-                </p>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={twoFactorSubmitting}
+                data-testid="two-factor-submit"
+              >
+                {twoFactorSubmitting ? "Verifying..." : "Verify"}
+              </Button>
+              <button
+                type="button"
+                className="block w-full text-center text-xs text-muted-foreground hover:text-foreground hover:underline"
+                onClick={() => {
+                  setTwoFactorMode((m) => (m === "totp" ? "backup" : "totp"))
+                  setTwoFactorCode("")
+                  setTwoFactorError(null)
+                }}
+                data-testid="two-factor-toggle"
+              >
+                {twoFactorMode === "backup"
+                  ? "Use your authenticator app instead"
+                  : "Use a backup code instead"}
+              </button>
+            </form>
+          ) : (
+            <form className="space-y-4" onSubmit={onSubmit} noValidate>
+              <div className="space-y-1.5">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  aria-invalid={errors.email ? true : undefined}
+                  {...register("email")}
+                />
+                {errors.email ? (
+                  <p className="text-xs text-destructive">{errors.email.message}</p>
+                ) : null}
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password">Password</Label>
+                  <Link
+                    to="/forgot-password"
+                    className="text-xs text-muted-foreground hover:underline"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  aria-invalid={errors.password ? true : undefined}
+                  {...register("password")}
+                />
+                {errors.password ? (
+                  <p className="text-xs text-destructive">
+                    {errors.password.message}
+                  </p>
+                ) : null}
+              </div>
+              {serverError ? (
+                <Alert variant="destructive">
+                  <AlertDescription>{serverError}</AlertDescription>
+                </Alert>
               ) : null}
-            </div>
-            {serverError ? (
-              <Alert variant="destructive">
-                <AlertDescription>{serverError}</AlertDescription>
-              </Alert>
-            ) : null}
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? "Signing in..." : "Sign in"}
-            </Button>
-            <p className="text-center text-xs text-muted-foreground">
-              Don&apos;t have an account?{" "}
-              <Link to="/signup" className="underline hover:text-foreground">
-                Create one
-              </Link>
-            </p>
-          </form>
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? "Signing in..." : "Sign in"}
+              </Button>
+              <p className="text-center text-xs text-muted-foreground">
+                Don&apos;t have an account?{" "}
+                <Link to="/signup" className="underline hover:text-foreground">
+                  Create one
+                </Link>
+              </p>
+            </form>
+          )}
         </CardContent>
       </Card>
     </div>

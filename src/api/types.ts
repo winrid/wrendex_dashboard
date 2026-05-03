@@ -631,9 +631,95 @@ export type AuthLoginRequest = {
   password: string
 }
 
-export type AuthLoginResponse = {
+/** Successful, fully-authenticated login response (no 2FA required, or 2FA
+ *  step already completed via login2fa). */
+export type AuthLoginResponseFull = {
   sessionToken: string
   user: User
+  twoFactorRequired?: false
+}
+
+/** Pending-2FA login response. The BE returns a short-lived `pendingToken`
+ *  that the FE must echo back with the user's TOTP / backup code via
+ *  /api/auth/login/2fa to complete the session. The pending token must NOT
+ *  be persisted to localStorage; it lives only in component state. */
+export type AuthLoginResponse2fa = {
+  sessionToken: string
+  twoFactorRequired: true
+}
+
+/** Discriminated union over the two possible login responses. Branch on
+ *  `twoFactorRequired === true` to detect the pending-2FA shape. */
+export type AuthLoginResponse = AuthLoginResponseFull | AuthLoginResponse2fa
+
+export type Login2faRequest = {
+  pendingToken: string
+  code: string
+}
+
+// ---------------------------------------------------------------------------
+// Two-factor authentication (P4 iter 2). Per-user TOTP setup, verify, and
+// disable; backup codes are returned once on first verify and never again.
+// ---------------------------------------------------------------------------
+
+export type TwoFactorStatus = {
+  enabled: boolean
+  /** ISO 8601 timestamp the user enabled 2FA; null when disabled. */
+  enabledAt?: string | null
+  /** Number of single-use backup codes the user still has. 0 when disabled
+   *  or after the user has consumed all 10 codes. */
+  backupCodesRemaining: number
+}
+
+export type Setup2faResponse = {
+  /** Base32-encoded shared secret. Surfaced as text for manual entry into
+   *  authenticator apps that cannot scan a QR code. */
+  secret: string
+  /** otpauth:// URL the FE renders as a QR code. */
+  otpauthUrl: string
+}
+
+export type Verify2faResponse = {
+  /** 10 single-use 8-character backup codes. The user must save these now;
+   *  they are never returned again. */
+  backupCodes: string[]
+}
+
+// ---------------------------------------------------------------------------
+// Personal API tokens (P4 iter 2). Per-user long-lived bearer tokens for
+// scripting + CI use. The plaintext token is returned exactly once on
+// create; subsequent reads only show the prefix.
+// ---------------------------------------------------------------------------
+
+export type PersonalApiToken = {
+  id: string
+  userId: string
+  name: string
+  /** First 8 characters of the token (e.g. "wrn_a1b2"); safe to display. */
+  prefix: string
+  /** Optional scopes attached to the token. Empty array means full-access. */
+  scopes: string[]
+  createdAt: string
+  lastUsedAt?: string | null
+  /** ISO 8601 revocation timestamp; non-null means the token is dead. */
+  revokedAt?: string | null
+  /** ISO 8601 expiry timestamp; null means "never expires". */
+  expiresAt?: string | null
+}
+
+export type CreateApiTokenInput = {
+  name: string
+  /** Optional ISO 8601 expiry timestamp. Omit / null for "never expires". */
+  expiresAt?: string | null
+}
+
+/** Response of POST /api/me/api-tokens. The plaintext `token` is returned
+ *  ONCE; the FE shows it inside a "save this now - you won't see it again"
+ *  panel and never persists it. */
+export type CreateApiTokenResponse = PersonalApiToken & {
+  /** Full plaintext bearer token, e.g. "wrn_a1b2c3...". Returned only on
+   *  create; subsequent reads omit it. */
+  token: string
 }
 
 export type PasswordResetRequest = {

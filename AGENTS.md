@@ -345,6 +345,33 @@ Per-tenant alert channels, ordered by ship date:
   current-password field, 400 against the new-password field, 204 toasts
   success.
 
+## Two-factor auth + personal API tokens (P4 iter 2)
+
+- **2FA login flow.** `AuthLoginResponse` is a discriminated union: a full
+  session (`{sessionToken, user}`) OR a pending-2FA shape
+  (`{sessionToken, twoFactorRequired: true}`). `useAuth().login` returns
+  `Me | {twoFactorRequired: true; pendingToken: string}`; the `Login`
+  route detects the pending branch and never persists the pendingToken to
+  localStorage. The user supplies a 6-digit TOTP code (or an 8-character
+  backup code via the "Use a backup code instead" link); `useAuth().login2fa`
+  POSTs `{pendingToken, code}` to `/api/auth/login/2fa` and persists the
+  resulting real session.
+- **2FA setup wizard.** Settings -> Account -> Two-factor authentication.
+  Bound to `get2faStatus / setup2fa / verify2fa / disable2fa`. The setup
+  wizard renders the otpauthUrl as a QR code via the `qrcode` package
+  (rendered to a data URL and shown via `<img>`); the secret is also shown
+  as text for manual entry. Successful verify surfaces the 10 single-use
+  backup codes once; the user must save them before closing the dialog.
+  Disable requires either a current TOTP or backup code.
+- **Personal API tokens.** Settings -> Account -> Personal API tokens.
+  DataTable bound to `listApiTokens`; create / revoke via `createApiToken`
+  / `revokeApiToken`. The plaintext token is returned exactly once in
+  `CreateApiTokenResponse.token` and surfaced inside a "save this now"
+  panel; subsequent reads only show the prefix. A Bearer header that
+  starts with `wrn_` identifies a personal API token (vs. a regular session
+  token); the BE auth middleware uses the prefix to pick the validation
+  path.
+
 ## Saved views pattern (P4 iter 1)
 
 Any DataTable surface can opt into named filter+sort+pagination segments

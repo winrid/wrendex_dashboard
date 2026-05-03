@@ -18,6 +18,7 @@ import type {
   AuditLogResult,
   AuthLoginRequest,
   AuthLoginResponse,
+  AuthLoginResponseFull,
   AuthSignupRequest,
   AuthSignupResponse,
   BillingSnapshot,
@@ -28,6 +29,8 @@ import type {
   CrawlDiff,
   CrawlLogEntry,
   CrawlRun,
+  CreateApiTokenInput,
+  CreateApiTokenResponse,
   CreateChangelogEntryInput,
   CreateCheckoutSessionInput,
   CreateCheckoutSessionResponse,
@@ -50,6 +53,7 @@ import type {
   LinkExploreParams,
   LinkResult,
   ListAuditLogParams,
+  Login2faRequest,
   ListNotificationLogParams,
   ListPublishedChangelogParams,
   ListSavedViewsParams,
@@ -62,6 +66,7 @@ import type {
   PagerDutyChannel,
   PasswordResetConfirm,
   PasswordResetRequest,
+  PersonalApiToken,
   PublicCatalogEntry,
   RedirectsResult,
   ResendNotificationInput,
@@ -69,6 +74,7 @@ import type {
   ResolveShareInput,
   ResourcesResult,
   SavedView,
+  Setup2faResponse,
   SetupIntent,
   ShareLink,
   SharedLinkResult,
@@ -85,6 +91,7 @@ import type {
   TenantInvite,
   TenantMember,
   TransferOwnershipInput,
+  TwoFactorStatus,
   UpdateMemberRoleInput,
   UpdatePagerDutyChannelInput,
   UpdateTeamsChannelInput,
@@ -104,6 +111,7 @@ import type {
   UpdateSiteInput,
   UpdateSiteScheduleInput,
   UpdateTenantBrandingInput,
+  Verify2faResponse,
 } from "./types"
 
 // ---------------------------------------------------------------------------
@@ -272,6 +280,28 @@ export function createApiClient(opts: CreateApiClientOptions) {
     const res = await request<AuthLoginResponse>("POST", "/api/auth/login", {
       body: input,
     })
+    // Only persist the bearer token when the login is fully authenticated.
+    // The pending-2FA shape carries a short-lived `sessionToken` that is
+    // only valid as the `pendingToken` body of /api/auth/login/2fa - it
+    // must NOT be sent as a Bearer header on any other request.
+    if (res.twoFactorRequired !== true) {
+      opts.setAuthToken?.(res.sessionToken)
+    }
+    return res
+  }
+
+  /** Completes a 2FA-pending login. Send the `pendingToken` returned by
+   *  /api/auth/login plus the user's TOTP code (or 8-character backup code).
+   *  On success returns the full session; the bearer token is pushed into
+   *  the in-memory slot so subsequent calls are authorised. */
+  async function login2fa(
+    input: Login2faRequest,
+  ): Promise<AuthLoginResponseFull> {
+    const res = await request<AuthLoginResponseFull>(
+      "POST",
+      "/api/auth/login/2fa",
+      { body: input },
+    )
     opts.setAuthToken?.(res.sessionToken)
     return res
   }
@@ -870,6 +900,59 @@ export function createApiClient(opts: CreateApiClientOptions) {
   }
 
   // -------------------------------------------------------------------------
+  // Two-factor authentication (P4 iter 2). Per-user TOTP setup, verify, and
+  // disable. The status endpoint returns whether 2FA is enabled + how many
+  // backup codes the user has left; setup returns the QR otpauthUrl + the
+  // raw secret; verify completes enrolment and returns the 10 single-use
+  // backup codes (the user only sees them ONCE - the BE never returns them
+  // again). disable requires either a fresh TOTP code or a backup code.
+  // -------------------------------------------------------------------------
+
+  function get2faStatus(): Promise<TwoFactorStatus> {
+    return request<TwoFactorStatus>("GET", "/api/me/2fa/status")
+  }
+
+  function setup2fa(): Promise<Setup2faResponse> {
+    return request<Setup2faResponse>("POST", "/api/me/2fa/setup")
+  }
+
+  function verify2fa(code: string): Promise<Verify2faResponse> {
+    return request<Verify2faResponse>("POST", "/api/me/2fa/verify", {
+      body: { code },
+    })
+  }
+
+  function disable2fa(code: string): Promise<undefined> {
+    return request<undefined>("POST", "/api/me/2fa/disable", {
+      body: { code },
+    })
+  }
+
+  // -------------------------------------------------------------------------
+  // Personal API tokens (P4 iter 2). Per-user long-lived bearer tokens for
+  // scripting + CI use. The plaintext token is returned exactly once on
+  // create; subsequent reads only show the prefix + metadata. Revoking is a
+  // soft delete (revokedAt non-null) so the token list still surfaces the
+  // history.
+  // -------------------------------------------------------------------------
+
+  function listApiTokens(): Promise<PersonalApiToken[]> {
+    return request<PersonalApiToken[]>("GET", "/api/me/api-tokens")
+  }
+
+  function createApiToken(
+    input: CreateApiTokenInput,
+  ): Promise<CreateApiTokenResponse> {
+    return request<CreateApiTokenResponse>("POST", "/api/me/api-tokens", {
+      body: input,
+    })
+  }
+
+  function revokeApiToken(id: string): Promise<undefined> {
+    return request<undefined>("DELETE", `/api/me/api-tokens/${id}`)
+  }
+
+  // -------------------------------------------------------------------------
   // Notification delivery log (plan section 4A.5). BE iter 2 round 2.
   // -------------------------------------------------------------------------
 
@@ -1334,6 +1417,7 @@ export function createApiClient(opts: CreateApiClientOptions) {
     // auth
     signup,
     login,
+    login2fa,
     logout,
     requestPasswordReset,
     confirmPasswordReset,
@@ -1413,6 +1497,15 @@ export function createApiClient(opts: CreateApiClientOptions) {
     createSetupIntent,
     // account
     changePassword,
+    // 2FA (P4 iter 2)
+    get2faStatus,
+    setup2fa,
+    verify2fa,
+    disable2fa,
+    // personal API tokens (P4 iter 2)
+    listApiTokens,
+    createApiToken,
+    revokeApiToken,
     // notifications (BE iter 2 round 2)
     listNotificationLog,
     resendNotification,

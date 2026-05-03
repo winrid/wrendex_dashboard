@@ -25,6 +25,7 @@ import type {
   AnonymousCrawlClaimResponse,
   AuthLoginRequest,
   AuthSignupRequest,
+  Login2faRequest,
   Me,
   Membership,
   TenantBranding,
@@ -85,7 +86,11 @@ export type AuthContextValue = {
     input: AuthSignupRequest,
     claimToken?: string,
   ) => Promise<SignupWithClaimResult>
-  login: (input: AuthLoginRequest) => Promise<Me>
+  login: (input: AuthLoginRequest) => Promise<Me | { twoFactorRequired: true; pendingToken: string }>
+  /** Completes a 2FA-pending login. Pass the pendingToken returned by
+   *  login() (when twoFactorRequired===true) plus the user's TOTP / backup
+   *  code; on success the bearer token is persisted and /api/me hydrated. */
+  login2fa: (input: Login2faRequest) => Promise<Me>
   logout: () => void
   setActiveTenant: (tenantId: string) => void
   /** Re-fetches /api/me and re-seeds {user, memberships, activeTenantId}.
@@ -261,8 +266,28 @@ export function AuthProvider({ children, skipBootstrap = false }: AuthProviderPr
   )
 
   const login = useCallback(
-    async (input: AuthLoginRequest): Promise<Me> => {
+    async (
+      input: AuthLoginRequest,
+    ): Promise<Me | { twoFactorRequired: true; pendingToken: string }> => {
       const res = await client.login(input)
+      if (res.twoFactorRequired === true) {
+        // Pending-2FA: the BE returned a short-lived pendingToken (it was
+        // surfaced as `sessionToken` on the wire). We deliberately do NOT
+        // persist it to localStorage; the caller must round-trip the token
+        // back through login2fa() to upgrade to a real session.
+        return { twoFactorRequired: true, pendingToken: res.sessionToken }
+      }
+      writeStoredToken(res.sessionToken)
+      const me = await client.getMe()
+      applyMe(me)
+      return me
+    },
+    [applyMe, client],
+  )
+
+  const login2fa = useCallback(
+    async (input: Login2faRequest): Promise<Me> => {
+      const res = await client.login2fa(input)
       writeStoredToken(res.sessionToken)
       const me = await client.getMe()
       applyMe(me)
@@ -310,6 +335,7 @@ export function AuthProvider({ children, skipBootstrap = false }: AuthProviderPr
       signup,
       signupWithOptionalClaim,
       login,
+      login2fa,
       logout,
       setActiveTenant,
       refresh,
@@ -323,6 +349,7 @@ export function AuthProvider({ children, skipBootstrap = false }: AuthProviderPr
       signup,
       signupWithOptionalClaim,
       login,
+      login2fa,
       logout,
       setActiveTenant,
       refresh,

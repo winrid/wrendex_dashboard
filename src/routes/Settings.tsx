@@ -58,6 +58,8 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Toaster } from "@/components/ui/sonner"
 import { SharingTab } from "@/components/share/SharingTab"
+import { TwoFactorSection } from "@/components/account/TwoFactorSection"
+import { ApiTokensSection } from "@/components/account/ApiTokensSection"
 import { siteDisplayName } from "@/lib/format"
 import { XIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -230,6 +232,10 @@ function AccountTab() {
       </Card>
 
       <ChangePasswordCard />
+
+      <TwoFactorSection />
+
+      <ApiTokensSection />
 
       <Card>
         <CardHeader>
