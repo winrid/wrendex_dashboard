@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import type { Page, PageResult } from "@/api/types"
+import type { PageResult, PageRow } from "@/api/types"
 
 const explorePages = vi.fn()
 
@@ -20,7 +20,12 @@ vi.mock("@/api/useApiClient", () => ({
 
 import { PageExplorer } from "../PageExplorer"
 
-function makePage(id: string, url: string, statusCode: number): Page {
+function makePage(
+  id: string,
+  url: string,
+  statusCode: number,
+  overrides: Partial<PageRow> = {},
+): PageRow {
   return {
     id,
     siteId: "s_1",
@@ -60,10 +65,15 @@ function makePage(id: string, url: string, statusCode: number): Page {
     jsonLdScripts: null,
     crawledAt: "2026-04-30T00:00:00Z",
     ampPage: false,
+    errorCount: 0,
+    warningCount: 0,
+    noticeCount: 0,
+    indexable: true,
+    ...overrides,
   }
 }
 
-function makeResult(pages: Page[]): PageResult {
+function makeResult(pages: PageRow[]): PageResult {
   return { pages, total: pages.length, page: 0, size: 50 }
 }
 

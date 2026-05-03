@@ -1,5 +1,5 @@
 // Public signup page. Plan section 0.3a + 2.0 (claim-aware variant) +
-// 1.2 step 3 (Stripe Elements scaffolding).
+// 1.2 step 3 (Stripe Elements pre-trial card capture).
 //
 // Creates the user, the user's first tenant (the workspace they're
 // signing up under), and seats them as OWNER in a single backend call.
@@ -9,33 +9,39 @@
 // Anonymous-claim flow (plan section 2.0): when ?claimToken=... is
 // present we prefill the workspace name from suggestedTenant, then after
 // signup we call client.claimAnonymousCrawl through the AuthProvider
-// helper. On success we route through /a/{token}/claiming (cosmetic
-// pause) and into the new site overview. On failure we toast the error
-// and route into the tenant's sites list anyway - the user is signed in
-// and the workspace exists, the crawl just didn't link.
+// helper. On success we route into the per-claim card-capture step
+// (Stripe Elements PaymentElement bound to a real SetupIntent
+// client_secret); on confirm we kick off the trial subscription via
+// createCheckoutSession and redirect.
 //
-// Trial-start (Phase 1.5 fallback path until the BE SetupIntent endpoint
-// ships and we can capture the card pre-signup):
-//   After signupWithOptionalClaim succeeds AND the claim mutation lands,
-//   we automatically call createCheckoutSession and window.location.href
-//   to the Stripe Checkout URL with trialDays=14. If the call fails (e.g.
-//   in dev where Stripe isn't configured), we soft-fail with a toast and
-//   the user can still kick off their trial from /billing later.
-//
-// Stripe Elements (plan section 1.2 step 3 - SCAFFOLDING ONLY):
-//   When claimToken is present, the PaymentMethodScaffolding card renders
-//   a small "we'll redirect after signup" notice. Once the BE ships
-//   SetupIntent + customer-creation ahead of signup, this branch flips to
-//   render PaymentElement against the returned client_secret.
+// Trial-start (now real, BE iter 2 round 1):
+//   - After signupWithOptionalClaim succeeds we call createSetupIntent
+//     against the freshly-created tenantId. The BE returns a real Stripe
+//     SetupIntent client_secret.
+//   - We render Stripe Elements + PaymentElement, the user pastes a card,
+//     and we confirmSetup. On success Stripe persists the payment method
+//     against the customer.
+//   - We then call createCheckoutSession with priceTier=PROFESSIONAL +
+//     trialDays=14 to spin up the trial subscription, and window.location
+//     to the returned Checkout URL.
+//   - "Skip card capture" link is preserved so users can defer.
 
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
+import { loadStripe, type Stripe } from "@stripe/stripe-js"
+import {
+  Elements,
+  PaymentElement,
+  useElements,
+  useStripe,
+} from "@stripe/react-stripe-js"
 import { ApiError } from "@/api/client"
 import { useApiClient } from "@/api/useApiClient"
+import type { ApiClient } from "@/api/client"
 import { useAuth } from "@/auth/AuthProvider"
 import { Button } from "@/components/ui/button"
 import {
@@ -49,6 +55,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Toaster } from "@/components/ui/sonner"
+
+/** localStorage key the post-signup branch reads to associate a captured
+ *  payment method id with the freshly-created tenant. */
+const PENDING_PM_KEY = "wrendex.pendingPaymentMethodId"
 
 const schema = z.object({
   email: z.string().email("Enter a valid email"),
@@ -75,6 +85,24 @@ function describeClaimError(status: number): string {
   }
 }
 
+/** Lazy singleton: load the Stripe.js publishable key once per page. Returns
+ *  null when no key is configured (dev / tests) so the caller can fall back
+ *  to the no-card path without throwing. */
+let stripePromise: Promise<Stripe | null> | null = null
+function getStripePromise(): Promise<Stripe | null> | null {
+  if (stripePromise) return stripePromise
+  const key = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY
+  if (typeof key !== "string" || key.length === 0) return null
+  stripePromise = loadStripe(key)
+  return stripePromise
+}
+
+type PendingCapture = {
+  tenantId: string
+  siteId: string | null
+  clientSecret: string
+}
+
 export function Signup() {
   const auth = useAuth()
   const client = useApiClient()
@@ -83,6 +111,9 @@ export function Signup() {
   const claimToken = params.get("claimToken") ?? undefined
   const suggestedTenant = params.get("suggestedTenant") ?? undefined
   const [serverError, setServerError] = useState<string | null>(null)
+  const [pendingCapture, setPendingCapture] = useState<PendingCapture | null>(
+    null,
+  )
 
   const {
     register,
@@ -112,7 +143,7 @@ export function Signup() {
     ])
   }, [claimToken, client])
 
-  if (auth.isAuthed) {
+  if (auth.isAuthed && !pendingCapture) {
     return <Navigate to="/" replace />
   }
 
@@ -130,22 +161,14 @@ export function Signup() {
     ])
   }
 
-  // We capture the freshly-created tenantId so the signup_completed event can
-  // tag it before the AuthProvider's /api/me hydration lands in the React
-  // tree (the route is already navigating away by then).
   const pendingTenantIdRef = useRef<string | undefined>(undefined)
 
-  // After signup completes + the anonymous-crawl claim succeeds, redirect
-  // the user into a Stripe Checkout session with trialDays=14. This is the
-  // Phase 1.5 fallback path until the BE SetupIntent endpoint ships and we
-  // can capture the card pre-signup. We can't actually verify the user
-  // completed Stripe Checkout from here, but recording the intent in the
-  // signup_completed event is enough for the funnel until then.
-  //
-  // Returns true on success (the page is redirecting; the caller should
-  // not also SPA-navigate). Returns false on soft failure (Stripe is
-  // unavailable in dev, the BE returned a non-2xx, etc.) so the caller
-  // can fall through to the site-overview navigation + toast.
+  // Trial-start: now uses real Stripe Elements + SetupIntent. After the user
+  // confirms the card with Stripe, we kick off a checkout session that
+  // creates the trial subscription, and the browser navigates to it. The
+  // PaymentElement-confirm route persists the captured payment method id
+  // under the wrendex.pendingPaymentMethodId localStorage key so a future
+  // /billing visit can attach it if checkout fails partway through.
   const startTrialCheckout = async (
     tenantId: string,
     siteId: string,
@@ -165,47 +188,73 @@ export function Signup() {
     }
   }
 
+  /** Skip-card-capture branch. Drops the user into the workspace + a hint
+   *  toast about Settings -> Billing. */
+  const finishWithoutCard = (tenantId: string, siteId: string | null) => {
+    fireSignupCompleted(false)
+    toast.message(
+      "Trial is not active yet. Add a card from Settings -> Billing to start your 14-day trial.",
+    )
+    navigate(
+      siteId ? `/t/${tenantId}/sites/${siteId}` : `/t/${tenantId}/sites`,
+      { replace: true },
+    )
+  }
+
   const onSubmit = handleSubmit(async (values) => {
     setServerError(null)
     try {
       const result = await auth.signupWithOptionalClaim(values, claimToken)
       pendingTenantIdRef.current = result.tenantId
 
-      if (claimToken) {
-        if (result.claim) {
-          // Kick off the trial checkout. On success the browser is already
-          // navigating to Stripe; on soft failure we land on the site
-          // overview and toast a hint about Settings -> Billing.
-          const checkoutOk = await startTrialCheckout(
-            result.tenantId,
-            result.claim.siteId,
-          )
-          fireSignupCompleted(checkoutOk)
-          if (checkoutOk) {
-            return
-          }
-          toast.message(
-            "Trial is not active yet. Add a card from Settings -> Billing to start your 14-day trial.",
-          )
-          navigate(
-            `/t/${result.tenantId}/sites/${result.claim.siteId}`,
-            { replace: true },
-          )
-          return
-        }
-        // Claim soft-fail: the user is signed in and the tenant exists; we
-        // bounce into the workspace and surface the claim error message.
-        // We don't fire trial checkout here because there's no canonical
-        // siteId to land on after Stripe.
+      // Fast-path B (no claim token): legacy behaviour - no inline card
+      // capture, the trial CTA is on /billing.
+      if (!claimToken) {
+        fireSignupCompleted(false)
+        navigate("/", { replace: true })
+        return
+      }
+
+      const siteId = result.claim?.siteId ?? null
+
+      // Surface claim soft-fail before attempting card capture (no canonical
+      // site to land on; user is already signed in).
+      if (!result.claim) {
         fireSignupCompleted(false)
         toast.error(describeClaimError(result.claimError?.status ?? 0))
         navigate(`/t/${result.tenantId}/sites`, { replace: true })
         return
       }
 
-      // PATH B (no claim token): the trial CTA lives on /billing, not here.
-      fireSignupCompleted(false)
-      navigate("/", { replace: true })
+      // Try to mount Stripe Elements. If we can't (no publishable key, or
+      // the SetupIntent call fails), fall back to the legacy redirect-to-
+      // Checkout path so the trial still starts.
+      const stripeP = getStripePromise()
+      if (!stripeP) {
+        const ok = await startTrialCheckout(result.tenantId, siteId!)
+        fireSignupCompleted(ok)
+        if (ok) return
+        finishWithoutCard(result.tenantId, siteId)
+        return
+      }
+
+      try {
+        const intent = await client.createSetupIntent(result.tenantId)
+        if (!intent?.clientSecret) {
+          // Defensive: BE returned a 200 with no secret. Treat as soft fail.
+          throw new Error("Missing clientSecret")
+        }
+        setPendingCapture({
+          tenantId: result.tenantId,
+          siteId,
+          clientSecret: intent.clientSecret,
+        })
+      } catch {
+        const ok = await startTrialCheckout(result.tenantId, siteId!)
+        fireSignupCompleted(ok)
+        if (ok) return
+        finishWithoutCard(result.tenantId, siteId)
+      }
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         setServerError("An account with this email already exists")
@@ -214,6 +263,65 @@ export function Signup() {
       }
     }
   })
+
+  // ---- Step 2 view: PaymentElement bound to the SetupIntent ----
+  if (pendingCapture) {
+    const stripeP = getStripePromise()
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
+        <Toaster />
+        <Card className="w-full max-w-md" data-testid="card-capture-card">
+          <CardHeader>
+            <CardTitle>Start your 14-day trial</CardTitle>
+            <CardDescription>
+              Add a card to begin your trial. You won&apos;t be charged
+              today.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {stripeP ? (
+              <Elements
+                stripe={stripeP}
+                options={{ clientSecret: pendingCapture.clientSecret }}
+              >
+                <PaymentCaptureForm
+                  capture={pendingCapture}
+                  client={client}
+                  onSuccess={(ok) => {
+                    fireSignupCompleted(ok)
+                  }}
+                  onSkip={() =>
+                    finishWithoutCard(
+                      pendingCapture.tenantId,
+                      pendingCapture.siteId,
+                    )
+                  }
+                  startTrialCheckout={startTrialCheckout}
+                />
+              </Elements>
+            ) : (
+              <div className="space-y-3 text-sm">
+                <p className="text-muted-foreground">
+                  Stripe is not configured in this environment.
+                </p>
+                <Button
+                  type="button"
+                  onClick={() =>
+                    finishWithoutCard(
+                      pendingCapture.tenantId,
+                      pendingCapture.siteId,
+                    )
+                  }
+                >
+                  Continue to dashboard
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
@@ -285,7 +393,7 @@ export function Signup() {
               </Alert>
             ) : null}
 
-            {claimToken ? <PaymentMethodScaffolding /> : null}
+            {claimToken ? <PaymentCaptureNotice /> : null}
 
             <Button type="submit" className="w-full" disabled={isSubmitting}>
               {isSubmitting ? "Creating account..." : "Create account"}
@@ -303,14 +411,12 @@ export function Signup() {
   )
 }
 
-// Stripe Elements scaffolding (plan section 1.2 step 3). The BE doesn't
-// expose a SetupIntent endpoint yet, so we can't capture the card before
-// signup completes. As the Phase 1.5 fallback we redirect the user into
-// Stripe Checkout immediately AFTER the signup + claim land. Once the BE
-// ships SetupIntent + customer-creation pre-signup, swap this for an
-// Elements provider + a PaymentElement bound to the returned client_secret;
-// see AGENTS.md "Phase 1.5 deferrals".
-function PaymentMethodScaffolding() {
+// Stripe Elements payment notice (plan section 1.2 step 3). When claimToken
+// is present, the post-signup branch creates a real SetupIntent against the
+// freshly-created tenant and renders the PaymentElement on the next step.
+// This card is the leading "what to expect" hint while the user fills out
+// the email/password form.
+function PaymentCaptureNotice() {
   return (
     <div
       className="rounded-md border bg-muted/40 px-3 py-2 text-xs"
@@ -318,9 +424,122 @@ function PaymentMethodScaffolding() {
     >
       <p className="font-medium">Payment</p>
       <p className="mt-1 text-muted-foreground">
-        We&apos;ll redirect you to a secure card capture step after signup
-        to start your 14-day trial.
+        After you create your account we&apos;ll capture a card so we can
+        start your 14-day trial. You won&apos;t be charged today.
       </p>
+    </div>
+  )
+}
+
+// PaymentCaptureForm: rendered inside <Elements>. Uses the Stripe.js + Stripe
+// React SDK to confirm the SetupIntent client_secret, persists the resulting
+// payment method id to localStorage (so /billing can attach it if checkout
+// fails), and finally redirects to a checkout session that opens the trial.
+function PaymentCaptureForm({
+  capture,
+  client,
+  onSuccess,
+  onSkip,
+  startTrialCheckout,
+}: {
+  capture: PendingCapture
+  client: ApiClient
+  onSuccess: (cardCaptured: boolean) => void
+  onSkip: () => void
+  startTrialCheckout: (tenantId: string, siteId: string) => Promise<boolean>
+}) {
+  const stripe = useStripe()
+  const elements = useElements()
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const navigate = useNavigate()
+
+  const returnUrl = useMemo(() => {
+    const fallback = capture.siteId
+      ? `/t/${capture.tenantId}/sites/${capture.siteId}`
+      : `/t/${capture.tenantId}/sites`
+    return window.location.origin + fallback + `?cardCapture=ok`
+  }, [capture])
+
+  const onConfirm = async () => {
+    if (!stripe || !elements) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const result = await stripe.confirmSetup({
+        elements,
+        confirmParams: { return_url: returnUrl },
+        redirect: "if_required",
+      })
+      if (result.error) {
+        setError(result.error.message ?? "Could not confirm card")
+        setSubmitting(false)
+        return
+      }
+      // Persist the payment method id so a follow-up /billing visit can
+      // surface it if anything goes wrong with the checkout step below.
+      const pm = result.setupIntent?.payment_method
+      if (typeof pm === "string") {
+        try {
+          window.localStorage.setItem(PENDING_PM_KEY, pm)
+        } catch {
+          // ignore - storage may be unavailable
+        }
+      } else if (pm && typeof pm === "object" && "id" in pm) {
+        try {
+          window.localStorage.setItem(
+            PENDING_PM_KEY,
+            (pm as { id: string }).id,
+          )
+        } catch {
+          // ignore
+        }
+      }
+      // Kick off the trial checkout.
+      if (capture.siteId) {
+        const ok = await startTrialCheckout(capture.tenantId, capture.siteId)
+        onSuccess(ok)
+        if (ok) return
+      }
+      // If we got here, checkout failed (or we have no siteId). Land in the
+      // workspace and let /billing handle the trial start.
+      onSuccess(true)
+      navigate(
+        capture.siteId
+          ? `/t/${capture.tenantId}/sites/${capture.siteId}`
+          : `/t/${capture.tenantId}/sites`,
+        { replace: true },
+      )
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Could not confirm card",
+      )
+      setSubmitting(false)
+    }
+  }
+
+  // Reference the typed client to keep the prop fixed for tests / future
+  // attach calls. The current confirmation flow does not directly use the
+  // client - the SetupIntent is opaque to FE - but keeping the dependency
+  // pinned makes the component's contract explicit.
+  void client
+
+  return (
+    <div className="space-y-4" data-testid="payment-element-form">
+      <PaymentElement />
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      <div className="flex flex-col gap-2">
+        <Button
+          type="button"
+          onClick={onConfirm}
+          disabled={submitting || !stripe || !elements}
+        >
+          {submitting ? "Confirming..." : "Add card and start trial"}
+        </Button>
+        <Button type="button" variant="ghost" onClick={onSkip}>
+          Skip card capture for now
+        </Button>
+      </div>
     </div>
   )
 }

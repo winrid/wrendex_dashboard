@@ -25,6 +25,7 @@ import { useApiClient } from "@/api/useApiClient"
 import type { DuplicateGroup, DuplicatesResult } from "@/api/types"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge-fallback"
+import { CsvExportButton } from "@/components/csv/CsvExportButton"
 import { cn } from "@/lib/utils"
 
 type TabKind = "title" | "description" | "body"
@@ -173,9 +174,15 @@ export function DuplicatesReport() {
           <span>/</span>
           <span>Duplicates</span>
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Duplicate content
-        </h1>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Duplicate content
+          </h1>
+          <CsvExportButton
+            path={`/api/crawls/${crawlId}/duplicates`}
+            filename={`duplicates-${crawlId}.csv`}
+          />
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">
             {dupQ.data?.totalDuplicateGroups ?? 0} clusters

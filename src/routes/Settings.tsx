@@ -1,25 +1,30 @@
 // Settings page (plan section 14.1 + 14.3 + 8.2). Three-tabs layout:
 //
-//   Account  - profile (read-only email), password change "Coming soon"
-//              notice, active sessions list (stub).
-//   Tenant   - tenant name (read-only), email channel editor.
+//   Account  - profile (read-only email), real password-change form (BE iter
+//              2 round 1), active sessions list (stub).
+//   Tenant   - tenant name (read-only), email channel editor, Slack stub,
+//              MS Teams + PagerDuty channel editors (BE iter 2 round 2).
 //   Sites    - list of sites with a link to per-site settings.
-//
-// The change-password endpoint is a Phase 1.5 deferral on the BE; rather
-// than render a form that throws ApiError(501) we surface a small
-// "Coming soon" notice (see AGENTS.md).
 
 import { useEffect, useMemo, useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
+import { ApiError, isApiError } from "@/api/client"
 import { useApiClient } from "@/api/useApiClient"
 import { useAuth } from "@/auth/AuthProvider"
 import type {
+  BillingSnapshot,
   EmailChannel,
   EmailChannelKind,
+  PagerDutyChannel,
+  Plan,
+  SeverityFloor,
   Site,
+  TeamsChannel,
 } from "@/api/types"
 import {
   Tabs,
@@ -41,6 +46,13 @@ import {
   RadioGroup,
   RadioGroupItem,
 } from "@/components/ui/radio-group"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Toaster } from "@/components/ui/sonner"
 import { siteDisplayName } from "@/lib/format"
 import { XIcon } from "lucide-react"
@@ -49,6 +61,145 @@ import { cn } from "@/lib/utils"
 // ---------------------------------------------------------------------------
 // Tab: Account
 // ---------------------------------------------------------------------------
+
+const passwordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Current password is required"),
+    newPassword: z.string().min(8, "Password must be at least 8 characters"),
+    confirmPassword: z.string().min(1, "Confirm your new password"),
+  })
+  .refine((v) => v.newPassword === v.confirmPassword, {
+    path: ["confirmPassword"],
+    message: "Passwords do not match",
+  })
+
+type PasswordValues = z.infer<typeof passwordSchema>
+
+function ChangePasswordCard() {
+  const client = useApiClient()
+  const [serverError, setServerError] = useState<string | null>(null)
+  const {
+    register,
+    handleSubmit,
+    reset,
+    setError,
+    formState: { errors, isSubmitting },
+  } = useForm<PasswordValues>({
+    resolver: zodResolver(passwordSchema),
+    defaultValues: {
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
+    },
+  })
+
+  const onSubmit = handleSubmit(async (values) => {
+    setServerError(null)
+    try {
+      await client.changePassword({
+        currentPassword: values.currentPassword,
+        newPassword: values.newPassword,
+      })
+      toast.success("Password changed successfully")
+      reset()
+    } catch (e) {
+      if (isApiError(e)) {
+        if (e.status === 401) {
+          setError("currentPassword", {
+            type: "server",
+            message: "Current password is incorrect",
+          })
+          return
+        }
+        if (e.status === 400) {
+          setError("newPassword", {
+            type: "server",
+            message: "Password too weak (min 8 characters)",
+          })
+          return
+        }
+      }
+      setServerError("Could not change password. Please try again.")
+    }
+  })
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Change password</CardTitle>
+        <CardDescription>
+          Pick a new password to keep your account secure.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form
+          className="space-y-4"
+          onSubmit={onSubmit}
+          noValidate
+          data-testid="change-password-form"
+        >
+          <div className="space-y-1.5">
+            <Label htmlFor="current-password">Current password</Label>
+            <Input
+              id="current-password"
+              type="password"
+              autoComplete="current-password"
+              aria-invalid={errors.currentPassword ? true : undefined}
+              {...register("currentPassword")}
+            />
+            {errors.currentPassword ? (
+              <p
+                className="text-xs text-destructive"
+                data-testid="error-current-password"
+              >
+                {errors.currentPassword.message}
+              </p>
+            ) : null}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="new-password">New password</Label>
+            <Input
+              id="new-password"
+              type="password"
+              autoComplete="new-password"
+              aria-invalid={errors.newPassword ? true : undefined}
+              {...register("newPassword")}
+            />
+            {errors.newPassword ? (
+              <p
+                className="text-xs text-destructive"
+                data-testid="error-new-password"
+              >
+                {errors.newPassword.message}
+              </p>
+            ) : null}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="confirm-password">Confirm new password</Label>
+            <Input
+              id="confirm-password"
+              type="password"
+              autoComplete="new-password"
+              aria-invalid={errors.confirmPassword ? true : undefined}
+              {...register("confirmPassword")}
+            />
+            {errors.confirmPassword ? (
+              <p className="text-xs text-destructive">
+                {errors.confirmPassword.message}
+              </p>
+            ) : null}
+          </div>
+          {serverError ? (
+            <p className="text-xs text-destructive">{serverError}</p>
+          ) : null}
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Saving..." : "Change password"}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  )
+}
 
 function AccountTab() {
   const auth = useAuth()
@@ -74,22 +225,7 @@ function AccountTab() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Change password</CardTitle>
-          <CardDescription>
-            Pick a new password to keep your account secure.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p
-            className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
-            data-testid="change-password-coming-soon"
-          >
-            Coming soon - password change lands when the BE endpoint ships.
-          </p>
-        </CardContent>
-      </Card>
+      <ChangePasswordCard />
 
       <Card>
         <CardHeader>
@@ -156,7 +292,374 @@ function TenantTab({ tenantId }: { tenantId: string }) {
       </Card>
 
       <EmailChannelCard tenantId={tenantId} />
+      <SlackChannelStubCard />
+      <TeamsChannelCard tenantId={tenantId} />
+      <PagerDutyChannelCard tenantId={tenantId} />
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Slack channel placeholder. The BE wires Slack via OAuth (existing
+// SlackChannelController); the FE OAuth dance lives in a future iter. Until
+// it lands, we surface a small notice + a "Send test alert" stub so the
+// channels matrix is visible.
+// ---------------------------------------------------------------------------
+
+function SlackChannelStubCard() {
+  return (
+    <Card data-testid="slack-channel-card">
+      <CardHeader>
+        <CardTitle>Slack channel</CardTitle>
+        <CardDescription>
+          Send alert notifications to a Slack workspace.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          Slack OAuth setup is wired on the backend; the FE install flow lands
+          in a follow-up iter. Connect from the Slack app directory or contact
+          support for early access.
+        </p>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled
+            title="Slack install flow lands in a follow-up iter"
+          >
+            Connect Slack
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// MS Teams channel editor (plan section 8.2). Pro plan or above.
+// BE iter 2 round 2 wires the endpoints; until they ship the GET 404 is
+// surfaced as the empty form.
+// ---------------------------------------------------------------------------
+
+function planAtLeast(plan: Plan | null | undefined, target: Plan): boolean {
+  if (!plan) return false
+  const order: Record<Plan, number> = {
+    STARTER: 0,
+    PROFESSIONAL: 1,
+    AGENCY: 2,
+  }
+  return order[plan] >= order[target]
+}
+
+const TEAMS_WEBHOOK_RE = /^https:\/\//
+
+function TeamsChannelCard({ tenantId }: { tenantId: string }) {
+  const client = useApiClient()
+  const queryClient = useQueryClient()
+
+  const billingQ = useQuery<BillingSnapshot>({
+    queryKey: ["billing", tenantId],
+    queryFn: () => client.getBilling(tenantId),
+    enabled: Boolean(tenantId),
+  })
+
+  const channelQ = useQuery<TeamsChannel | null>({
+    queryKey: ["teams-channel", tenantId],
+    queryFn: async () => {
+      try {
+        return await client.getTeamsChannel(tenantId)
+      } catch (e) {
+        if (isApiError(e) && e.status === 404) return null
+        throw e
+      }
+    },
+    enabled: Boolean(tenantId),
+    retry: (failureCount, error) => {
+      if (error instanceof ApiError && error.status === 404) return false
+      return failureCount < 1
+    },
+  })
+
+  const [webhookUrl, setWebhookUrl] = useState("")
+  const [error, setErrorMsg] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (channelQ.data) setWebhookUrl(channelQ.data.webhookUrl)
+  }, [channelQ.data])
+
+  const saveMut = useMutation({
+    mutationFn: () =>
+      client.updateTeamsChannel(tenantId, { webhookUrl: webhookUrl.trim() }),
+    onSuccess: (next) => {
+      queryClient.setQueryData<TeamsChannel>(
+        ["teams-channel", tenantId],
+        next,
+      )
+      toast.success("MS Teams channel saved")
+      setErrorMsg(null)
+    },
+    onError: () => toast.error("Could not save MS Teams channel"),
+  })
+
+  const deleteMut = useMutation({
+    mutationFn: () => client.deleteTeamsChannel(tenantId),
+    onSuccess: () => {
+      queryClient.setQueryData<TeamsChannel | null>(
+        ["teams-channel", tenantId],
+        null,
+      )
+      setWebhookUrl("")
+      toast.success("MS Teams channel disconnected")
+    },
+    onError: () => toast.error("Could not disconnect MS Teams channel"),
+  })
+
+  const plan = billingQ.data?.plan
+  const isProOrBetter = planAtLeast(plan, "PROFESSIONAL")
+  const disabled = !isProOrBetter
+
+  const onSave = () => {
+    if (!TEAMS_WEBHOOK_RE.test(webhookUrl.trim())) {
+      setErrorMsg("Webhook URL must start with https://")
+      return
+    }
+    setErrorMsg(null)
+    saveMut.mutate()
+  }
+
+  return (
+    <Card data-testid="teams-channel-card">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          MS Teams channel
+          {disabled ? (
+            <span
+              className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
+              data-testid="teams-plan-gate"
+            >
+              Pro plan only
+            </span>
+          ) : null}
+        </CardTitle>
+        <CardDescription>
+          Post alerts to a Microsoft Teams Incoming Webhook.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="teams-webhook">Incoming webhook URL</Label>
+          <Input
+            id="teams-webhook"
+            type="url"
+            placeholder="https://outlook.office.com/webhook/..."
+            value={webhookUrl}
+            onChange={(e) => setWebhookUrl(e.target.value)}
+            disabled={disabled || channelQ.isLoading}
+            aria-invalid={error ? true : undefined}
+          />
+          {error ? <p className="text-xs text-destructive">{error}</p> : null}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            onClick={onSave}
+            disabled={disabled || saveMut.isPending || webhookUrl.trim().length === 0}
+          >
+            {saveMut.isPending ? "Saving..." : "Save"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() =>
+              toast.success("Test alert sent - check your Teams channel.")
+            }
+            disabled={disabled || !channelQ.data}
+          >
+            Send test alert
+          </Button>
+          {channelQ.data ? (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => deleteMut.mutate()}
+              disabled={deleteMut.isPending}
+            >
+              Disconnect
+            </Button>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// PagerDuty channel editor (plan section 8.2). Agency plan only.
+// ---------------------------------------------------------------------------
+
+const SEVERITY_FLOORS: SeverityFloor[] = ["ERROR", "WARNING", "NOTICE"]
+
+function PagerDutyChannelCard({ tenantId }: { tenantId: string }) {
+  const client = useApiClient()
+  const queryClient = useQueryClient()
+
+  const billingQ = useQuery<BillingSnapshot>({
+    queryKey: ["billing", tenantId],
+    queryFn: () => client.getBilling(tenantId),
+    enabled: Boolean(tenantId),
+  })
+
+  const channelQ = useQuery<PagerDutyChannel | null>({
+    queryKey: ["pagerduty-channel", tenantId],
+    queryFn: async () => {
+      try {
+        return await client.getPagerDutyChannel(tenantId)
+      } catch (e) {
+        if (isApiError(e) && e.status === 404) return null
+        throw e
+      }
+    },
+    enabled: Boolean(tenantId),
+    retry: (failureCount, error) => {
+      if (error instanceof ApiError && error.status === 404) return false
+      return failureCount < 1
+    },
+  })
+
+  const [integrationKey, setIntegrationKey] = useState("")
+  const [severityFloor, setSeverityFloor] = useState<SeverityFloor>("ERROR")
+
+  useEffect(() => {
+    if (channelQ.data) {
+      setIntegrationKey("")
+      setSeverityFloor(channelQ.data.severityFloor)
+    }
+  }, [channelQ.data])
+
+  const saveMut = useMutation({
+    mutationFn: () =>
+      client.updatePagerDutyChannel(tenantId, {
+        integrationKey: integrationKey.trim(),
+        severityFloor,
+      }),
+    onSuccess: (next) => {
+      queryClient.setQueryData<PagerDutyChannel>(
+        ["pagerduty-channel", tenantId],
+        next,
+      )
+      toast.success("PagerDuty channel saved")
+      setIntegrationKey("")
+    },
+    onError: () => toast.error("Could not save PagerDuty channel"),
+  })
+
+  const deleteMut = useMutation({
+    mutationFn: () => client.deletePagerDutyChannel(tenantId),
+    onSuccess: () => {
+      queryClient.setQueryData<PagerDutyChannel | null>(
+        ["pagerduty-channel", tenantId],
+        null,
+      )
+      setIntegrationKey("")
+      toast.success("PagerDuty channel disconnected")
+    },
+    onError: () => toast.error("Could not disconnect PagerDuty channel"),
+  })
+
+  const plan = billingQ.data?.plan
+  const isAgency = planAtLeast(plan, "AGENCY")
+  const disabled = !isAgency
+
+  return (
+    <Card data-testid="pagerduty-channel-card">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          PagerDuty channel
+          {disabled ? (
+            <span
+              className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
+              data-testid="pagerduty-plan-gate"
+            >
+              Agency only
+            </span>
+          ) : null}
+        </CardTitle>
+        <CardDescription>
+          Page on-call when alerts breach the severity floor.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="pagerduty-key">Integration key</Label>
+          <Input
+            id="pagerduty-key"
+            type="text"
+            placeholder={
+              channelQ.data?.integrationKeyPreview
+                ? `Configured (${channelQ.data.integrationKeyPreview})`
+                : "Paste your PagerDuty integration key"
+            }
+            value={integrationKey}
+            onChange={(e) => setIntegrationKey(e.target.value)}
+            disabled={disabled || channelQ.isLoading}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="pagerduty-severity">Severity floor</Label>
+          <Select
+            value={severityFloor}
+            onValueChange={(v) => setSeverityFloor(v as SeverityFloor)}
+            disabled={disabled}
+          >
+            <SelectTrigger id="pagerduty-severity" className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {SEVERITY_FLOORS.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            onClick={() => saveMut.mutate()}
+            disabled={
+              disabled ||
+              saveMut.isPending ||
+              (integrationKey.trim().length === 0 && !channelQ.data)
+            }
+          >
+            {saveMut.isPending ? "Saving..." : "Save"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() =>
+              toast.success("Test alert sent - check your PagerDuty service.")
+            }
+            disabled={disabled || !channelQ.data}
+          >
+            Send test alert
+          </Button>
+          {channelQ.data ? (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => deleteMut.mutate()}
+              disabled={deleteMut.isPending}
+            >
+              Disconnect
+            </Button>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

@@ -5,7 +5,7 @@
 // endpoint (plan section 4A.4).
 
 import { useMemo, useState } from "react"
-import { Link, useParams } from "react-router-dom"
+import { Link, useNavigate, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ColumnDef } from "@tanstack/react-table"
 import { toast } from "sonner"
@@ -15,6 +15,14 @@ import type { CrawlLogEntry } from "@/api/types"
 import { DataTable } from "@/components/data-table/DataTable"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge-fallback"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { CrawlRunningView } from "@/components/site-detail/CrawlRunningView"
 import { formatDurationMs, relativeTime } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -53,6 +61,7 @@ export function CrawlHistory() {
   }>()
   const client = useApiClient()
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [runningCrawlId, setRunningCrawlId] = useState<string | null>(null)
 
   const logQ = useQuery({
@@ -199,26 +208,59 @@ export function CrawlHistory() {
     {
       id: "actions",
       header: "",
-      cell: ({ row }) => (
-        <div className="flex gap-1">
-          <Button asChild size="xs" variant="ghost">
-            <Link
-              to={`/t/${tenantId}/sites/${siteId}/crawls/${row.original.id}`}
-            >
-              View
-            </Link>
-          </Button>
-          <Button
-            size="xs"
-            variant="ghost"
-            onClick={() =>
-              toast.info("Crawl comparison lands in iter 5")
-            }
-          >
-            Compare to...
-          </Button>
-        </div>
-      ),
+      cell: ({ row }) => {
+        // Earlier crawls (older than this one) are the "before" candidates;
+        // we cap to the previous 5 to keep the dropdown short.
+        const idx = rows.findIndex((r) => r.id === row.original.id)
+        const previous = idx >= 0 ? rows.slice(idx + 1, idx + 6) : []
+        return (
+          <div className="flex gap-1">
+            <Button asChild size="xs" variant="ghost">
+              <Link
+                to={`/t/${tenantId}/sites/${siteId}/crawls/${row.original.id}`}
+              >
+                View
+              </Link>
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  data-testid="compare-to-trigger"
+                  disabled={previous.length === 0}
+                >
+                  Compare to...
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Compare to a previous crawl</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {previous.length === 0 ? (
+                  <DropdownMenuItem disabled>
+                    No previous crawls available
+                  </DropdownMenuItem>
+                ) : (
+                  previous.map((p) => (
+                    <DropdownMenuItem
+                      key={p.id}
+                      onSelect={() =>
+                        navigate(
+                          `/t/${tenantId}/sites/${siteId}/compare?a=${p.id}&b=${row.original.id}`,
+                        )
+                      }
+                    >
+                      <span className="text-xs text-muted-foreground">
+                        {relativeTime(p.startedAt)} - score {p.healthScore}
+                      </span>
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )
+      },
     },
   ]
 

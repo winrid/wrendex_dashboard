@@ -7,6 +7,7 @@ import {
   Users,
   CreditCard,
   Settings,
+  Bell,
   type LucideIcon,
 } from "lucide-react"
 
@@ -19,6 +20,7 @@ export type NavItem = {
 const NAV_PATHS: { path: string; label: string; icon: LucideIcon }[] = [
   { path: "sites", label: "Sites", icon: Globe },
   { path: "inbox", label: "Inbox", icon: Inbox },
+  { path: "notifications/log", label: "Notifications", icon: Bell },
   { path: "reports", label: "Reports", icon: FileBarChart },
   { path: "catalog", label: "Catalog", icon: BookOpen },
   { path: "schedule", label: "Schedule", icon: CalendarClock },

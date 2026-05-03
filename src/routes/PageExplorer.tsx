@@ -20,8 +20,9 @@ import {
 } from "@tanstack/react-table"
 import { ChevronDownIcon, ExternalLinkIcon } from "lucide-react"
 import { useApiClient } from "@/api/useApiClient"
-import type { Page, PageExploreParams, PageResult } from "@/api/types"
+import type { PageExploreParams, PageResult, PageRow } from "@/api/types"
 import { DataTable } from "@/components/data-table/DataTable"
+import { CsvExportButton } from "@/components/csv/CsvExportButton"
 import { Badge } from "@/components/ui/badge-fallback"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -50,9 +51,22 @@ function statusCodeBadgeClass(code: number): string {
   return "bg-muted text-muted-foreground"
 }
 
+/** Fallback derivation when the BE row predates the iter 2 round 1 PageRow
+ *  shape and does not carry an `indexable` flag. The BE rule (PageRow.java
+ *  derivedIndexable) treats noindex / none as not indexable; mirror it. */
 function indexableFromRobots(robotsMeta: string | null | undefined): boolean {
   if (!robotsMeta) return true
-  return !/noindex/i.test(robotsMeta)
+  const lower = robotsMeta.toLowerCase()
+  if (lower.includes("noindex")) return false
+  if (lower.includes("none")) return false
+  return true
+}
+
+function indexableFromRow(row: PageRow): boolean {
+  // The BE-derived flag is authoritative (PageRow.indexable). Fallback to
+  // the FE rule for any payload that arrived without it (defensive).
+  if (typeof row.indexable === "boolean") return row.indexable
+  return indexableFromRobots(row.robotsMeta)
 }
 
 export function PageExplorer() {
@@ -100,7 +114,7 @@ export function PageExplorer() {
   const allRows = pagesQ.data?.pages ?? []
   const total = pagesQ.data?.total ?? 0
 
-  const filteredRows = useMemo<Page[]>(() => {
+  const filteredRows = useMemo<PageRow[]>(() => {
     let rows = allRows
     if (statusCodes.length > 1) {
       const set = new Set(statusCodes)
@@ -113,7 +127,7 @@ export function PageExplorer() {
     return rows
   }, [allRows, statusCodes, urlContains])
 
-  const columns = useMemo<ColumnDef<Page>[]>(
+  const columns = useMemo<ColumnDef<PageRow>[]>(
     () => [
       {
         id: "url",
@@ -185,10 +199,17 @@ export function PageExplorer() {
         ),
       },
       {
+        id: "errorCount",
+        header: "Issues",
+        accessorKey: "errorCount",
+        enableSorting: true,
+        cell: ({ row }) => <IssueStack row={row.original} />,
+      },
+      {
         id: "indexable",
         header: "Indexable",
         cell: ({ row }) => {
-          const ok = indexableFromRobots(row.original.robotsMeta)
+          const ok = indexableFromRow(row.original)
           return ok ? (
             <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
               Yes
@@ -287,9 +308,17 @@ export function PageExplorer() {
         }}
         statusCodes={statusCodes}
         onToggleStatusCode={toggleStatusCode}
+        csvParams={{
+          page: params.page,
+          size: params.size,
+          sort: params.sort,
+          dir: params.dir,
+          statusCode: params.statusCode,
+        }}
+        crawlId={crawlId}
       />
 
-      <DataTable<Page>
+      <DataTable<PageRow>
         columns={columns}
         data={filteredRows}
         rowCount={total}
@@ -337,6 +366,8 @@ type ToolbarProps = {
   onUrlContainsChange: (v: string) => void
   statusCodes: number[]
   onToggleStatusCode: (code: number, on: boolean) => void
+  csvParams: Record<string, string | number | boolean | null | undefined>
+  crawlId: string
 }
 
 function Toolbar({
@@ -344,6 +375,8 @@ function Toolbar({
   onUrlContainsChange,
   statusCodes,
   onToggleStatusCode,
+  csvParams,
+  crawlId,
 }: ToolbarProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -383,6 +416,66 @@ function Toolbar({
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <div className="ml-auto">
+        <CsvExportButton
+          path={`/api/crawls/${crawlId}/pages/explore`}
+          params={csvParams}
+          filename={`pages-${crawlId}.csv`}
+        />
+      </div>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// IssueStack: small severity-coloured stack of per-page alert counts.
+// Reads the iter 2 round 1 PageRow fields (errorCount / warningCount /
+// noticeCount). Renders "0" with a muted dash when the page has no alerts.
+// ---------------------------------------------------------------------------
+
+function IssueStack({ row }: { row: PageRow }) {
+  const e = row.errorCount ?? 0
+  const w = row.warningCount ?? 0
+  const n = row.noticeCount ?? 0
+  if (e === 0 && w === 0 && n === 0) {
+    return <span className="text-xs text-muted-foreground">-</span>
+  }
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      {e > 0 ? (
+        <span
+          className="inline-flex items-center gap-1"
+          title={`${e} error${e === 1 ? "" : "s"}`}
+        >
+          <span className="inline-block size-2 rounded-full bg-red-500" />
+          <span className="tabular-nums text-red-700 dark:text-red-400">
+            {e}
+          </span>
+        </span>
+      ) : null}
+      {w > 0 ? (
+        <span
+          className="inline-flex items-center gap-1"
+          title={`${w} warning${w === 1 ? "" : "s"}`}
+        >
+          <span className="inline-block size-2 rounded-full bg-amber-500" />
+          <span className="tabular-nums text-amber-700 dark:text-amber-400">
+            {w}
+          </span>
+        </span>
+      ) : null}
+      {n > 0 ? (
+        <span
+          className="inline-flex items-center gap-1"
+          title={`${n} notice${n === 1 ? "" : "s"}`}
+        >
+          <span className="inline-block size-2 rounded-full bg-blue-500" />
+          <span className="tabular-nums text-blue-700 dark:text-blue-400">
+            {n}
+          </span>
+        </span>
+      ) : null}
     </div>
   )
 }

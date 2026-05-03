@@ -157,27 +157,59 @@ external component libraries.
   soon" stub. Subscribe buttons call `createCheckoutSession` with
   `priceTier=STARTER|PROFESSIONAL|AGENCY` and redirect to the returned
   URL.
-- `/t/:tenantId/settings` - Settings (iter 6 FE-7). Tabs: Account
-  (profile, change-password form stub, sessions stub), Tenant (workspace
-  name + email channel editor with kind=MEMBERS|CUSTOM|BOTH and chip
-  recipients), Sites (list + per-site settings link).
+- `/t/:tenantId/settings` - Settings (iter 6 FE-7 + iter 2 r1/r2 cleanup).
+  Tabs: Account (profile, real change-password form, sessions stub), Tenant
+  (workspace name + email channel + Slack stub + MS Teams + PagerDuty
+  channel editors; channel availability gated on plan tier), Sites (list +
+  per-site settings link).
+- `/t/:tenantId/sites/:siteId/compare` - CrawlComparison (sec 4A.4). Reads
+  ?a={crawlIdA}&b={crawlIdB}; renders a 3-up before / after / delta header,
+  per-category delta diff (computed client-side from getIssuesSummary on
+  both crawls), and the New / Resolved / Persisted partitions from
+  getCrawlDiff(b, {against: a}) via shared AlertsTable.
+- `/t/:tenantId/notifications/log` - NotificationLog (sec 4A.5). Reads
+  listNotificationLog (BE iter 2 round 2). Channel + status multi-select +
+  since-window filter, per-row Resend button. Renders an empty "shipping
+  shortly" state when the BE 404s.
 
-## Phase 1.5 deferrals
+## CSV export pattern (sec 4.9)
 
-- **Stripe Elements signup card capture (sec 1.2 step 3)** is
-  scaffolded. The typed client method `createSetupIntent` returns
-  `null + console.warn` until the BE endpoint ships; the Signup route
-  surfaces the "Skip card capture for now" path in that case. When the
-  BE wires SetupIntent + customer creation ahead of signup, swap the
-  scaffolding for a real `<Elements>` provider bound to the returned
-  `client_secret`. Persist the resulting payment method id under the
-  localStorage key `wrendex.pendingPaymentMethodId` so the post-signup
-  branch can call `createCheckoutSession({priceTier: "PROFESSIONAL",
-  trialDays: 14})` to start the trial.
-- **Change password (sec 14.1)** is gated by an `ApiError(501)` stub in
-  `client.ts`; the form catches it and toasts a "wires up later"
-  message. Replace the stub with a real request once the BE ships
-  `/api/auth/change-password`.
+Every report grid surfaces an "Export CSV" button that calls into
+`src/lib/download.ts`. The shared `<CsvExportButton>` component constructs
+the URL via `csvUrl(path, params)`, then `downloadCsv(url, filename)`
+authenticated-fetches the blob. The path supplied is the same one the
+typed client already hits for the JSON form; `?format=csv` is appended by
+the helper. `src/lib/download.ts` is the only authorised raw-fetch surface
+in feature code.
+
+## Channels matrix
+
+Per-tenant alert channels, ordered by ship date:
+
+  - Email channel - shipped iter 1; MEMBERS / CUSTOM / BOTH selector +
+    chip recipients.
+  - Slack channel - BE wired (iter 1), FE install flow deferred. Surfaces
+    a placeholder card.
+  - MS Teams channel - BE iter 2 round 2; FE form gated to
+    PROFESSIONAL+ plans. Webhook URL only; "Send test alert" stub.
+  - PagerDuty channel - BE iter 2 round 2; FE form gated to AGENCY plans.
+    Integration key + severity floor; "Send test alert" stub.
+
+## Phase 1.5 cleanups (now landed)
+
+- **Stripe Elements signup card capture (sec 1.2 step 3)** is now real.
+  The typed client `createSetupIntent` hits POST
+  /api/tenants/{tenantId}/billing/setup-intent (BE iter 2 round 1). The
+  Signup route mounts `<Elements>` against the returned `client_secret`
+  when a `claimToken` is present; on confirm we persist the resulting
+  payment method id under `wrendex.pendingPaymentMethodId` and call
+  `createCheckoutSession({priceTier: "PROFESSIONAL", trialDays: 14})` to
+  start the trial. Falls back to legacy redirect-to-Checkout when
+  `VITE_STRIPE_PUBLISHABLE_KEY` is unset (dev / test).
+- **Change password (sec 14.1)** is wired to POST
+  /api/auth/password/change (BE iter 2 round 1). Settings -> Account ships
+  a real RHF + zod form; 401 surfaces inline against the current-password
+  field, 400 against the new-password field, 204 toasts success.
 
 ## Funnel telemetry contract (sec 2.0 + 16)
 

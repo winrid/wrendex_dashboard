@@ -38,6 +38,7 @@ import {
   type AlertsTableToolbarState,
 } from "@/components/alerts-table/AlertsTable"
 import { AlertDetailDrawer } from "@/components/alerts-table/AlertDetailDrawer"
+import { CsvExportButton } from "@/components/csv/CsvExportButton"
 import { siteDisplayName } from "@/lib/format"
 
 type TabKey = "open" | "snoozed" | "resolved"
@@ -177,23 +178,39 @@ export function Inbox() {
             Review and triage alerts across your sites.
           </p>
         </div>
-        {showSitePicker ? (
-          <label className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">Site</span>
-            <select
-              className="h-8 rounded-md border bg-background px-2 text-sm"
-              value={siteId ?? ""}
-              onChange={(e) => setSiteId(e.target.value)}
-              aria-label="Site"
-            >
-              {sites.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {siteDisplayName(s.url)}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {showSitePicker ? (
+            <label className="flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground">Site</span>
+              <select
+                className="h-8 rounded-md border bg-background px-2 text-sm"
+                value={siteId ?? ""}
+                onChange={(e) => setSiteId(e.target.value)}
+                aria-label="Site"
+              >
+                {sites.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {siteDisplayName(s.url)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          {siteId ? (
+            <CsvExportButton
+              path={`/api/sites/${siteId}/alerts`}
+              params={{
+                page: params.page,
+                size: params.size,
+                severity: params.severity,
+                status: params.status,
+                pageUrlContains: params.pageUrlContains,
+                crawlRunId: params.crawlRunId,
+              }}
+              filename={`inbox-${siteId}.csv`}
+            />
+          ) : null}
+        </div>
       </div>
 
       <Tabs value={tab} onValueChange={onTabChange}>

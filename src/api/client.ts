@@ -37,17 +37,25 @@ import type {
   IssuesSummary,
   LinkExploreParams,
   LinkResult,
+  ListNotificationLogParams,
   Me,
+  NotificationLogResult,
   Page,
   PageExploreParams,
   PageResult,
+  PagerDutyChannel,
   PasswordResetConfirm,
   PasswordResetRequest,
   RedirectsResult,
+  ResendNotificationInput,
+  ResendNotificationResponse,
   ResourcesResult,
   SetupIntent,
   Site,
   SiteSchedule,
+  TeamsChannel,
+  UpdatePagerDutyChannelInput,
+  UpdateTeamsChannelInput,
   SiteVerificationConfirmation,
   SiteVerificationRequest,
   SiteVerificationResponse,
@@ -696,35 +704,118 @@ export function createApiClient(opts: CreateApiClientOptions) {
   }
 
   // -------------------------------------------------------------------------
-  // Stripe SetupIntent (plan section 1.2 step 3). Phase 1.5 deferral - the
-  // BE doesn't expose a SetupIntent endpoint yet. The FE form is wired
-  // anyway; until the BE ships, this stub returns null + console.warns so
-  // the Signup route can fall back to the "Skip card capture" path.
+  // Stripe SetupIntent (plan section 1.2 step 3). Bound to BE endpoint
+  // POST /api/tenants/{tenantId}/billing/setup-intent (iter 2 round 1).
+  // Returns the client_secret the FE feeds into Stripe Elements + the
+  // Stripe customerId for downstream attach calls.
   // -------------------------------------------------------------------------
 
-  async function createSetupIntent(
-    _tenantId: string,
-  ): Promise<SetupIntent | null> {
-    // eslint-disable-next-line no-console
-    console.warn(
-      "createSetupIntent: BE endpoint not yet wired (Phase 1.5 deferral).",
+  function createSetupIntent(tenantId: string): Promise<SetupIntent> {
+    return request<SetupIntent>(
+      "POST",
+      `/api/tenants/${tenantId}/billing/setup-intent`,
     )
-    return null
   }
 
   // -------------------------------------------------------------------------
-  // Account - changePassword. The BE has no /api/auth/change-password yet;
-  // the typed client method throws ApiError(501) so the Settings form can
-  // surface a graceful "wires up later" toast without the call hitting the
-  // network. Replace this body with a real `request(...)` call once the BE
-  // ships.
+  // Account - changePassword. Bound to POST /api/auth/password/change (BE
+  // iter 2 round 1). Returns 204 on success; the route surfaces 401 +
+  // 400 inline.
   // -------------------------------------------------------------------------
 
-  async function changePassword(_input: ChangePasswordInput): Promise<void> {
-    throw new ApiError(
-      501,
-      "Not Implemented",
-      { message: "changePassword endpoint is not wired on the BE yet" },
+  function changePassword(input: ChangePasswordInput): Promise<undefined> {
+    return request<undefined>("POST", "/api/auth/password/change", {
+      body: input,
+    })
+  }
+
+  // -------------------------------------------------------------------------
+  // Notification delivery log (plan section 4A.5). BE iter 2 round 2.
+  // -------------------------------------------------------------------------
+
+  function listNotificationLog(
+    tenantId: string,
+    params: ListNotificationLogParams = {},
+  ): Promise<NotificationLogResult> {
+    return request<NotificationLogResult>(
+      "GET",
+      `/api/tenants/${tenantId}/notifications/log`,
+      {
+        query: {
+          page: params.page ?? 0,
+          size: params.size,
+          channel: params.channel,
+          status: params.status,
+          since: params.since,
+        },
+      },
+    )
+  }
+
+  function resendNotification(
+    tenantId: string,
+    deliveryId: string,
+    input: ResendNotificationInput,
+  ): Promise<ResendNotificationResponse> {
+    return request<ResendNotificationResponse>(
+      "POST",
+      `/api/tenants/${tenantId}/notifications/${deliveryId}/resend`,
+      { body: input },
+    )
+  }
+
+  // -------------------------------------------------------------------------
+  // MS Teams + PagerDuty channels (plan section 8.2). BE iter 2 round 2.
+  // 404 from the GET endpoints indicates the channel is not connected.
+  // -------------------------------------------------------------------------
+
+  function getTeamsChannel(tenantId: string): Promise<TeamsChannel> {
+    return request<TeamsChannel>(
+      "GET",
+      `/api/tenants/${tenantId}/teams-channel`,
+    )
+  }
+
+  function updateTeamsChannel(
+    tenantId: string,
+    input: UpdateTeamsChannelInput,
+  ): Promise<TeamsChannel> {
+    return request<TeamsChannel>(
+      "PUT",
+      `/api/tenants/${tenantId}/teams-channel`,
+      { body: input },
+    )
+  }
+
+  function deleteTeamsChannel(tenantId: string): Promise<undefined> {
+    return request<undefined>(
+      "DELETE",
+      `/api/tenants/${tenantId}/teams-channel`,
+    )
+  }
+
+  function getPagerDutyChannel(tenantId: string): Promise<PagerDutyChannel> {
+    return request<PagerDutyChannel>(
+      "GET",
+      `/api/tenants/${tenantId}/pagerduty-channel`,
+    )
+  }
+
+  function updatePagerDutyChannel(
+    tenantId: string,
+    input: UpdatePagerDutyChannelInput,
+  ): Promise<PagerDutyChannel> {
+    return request<PagerDutyChannel>(
+      "PUT",
+      `/api/tenants/${tenantId}/pagerduty-channel`,
+      { body: input },
+    )
+  }
+
+  function deletePagerDutyChannel(tenantId: string): Promise<undefined> {
+    return request<undefined>(
+      "DELETE",
+      `/api/tenants/${tenantId}/pagerduty-channel`,
     )
   }
 
@@ -796,10 +887,20 @@ export function createApiClient(opts: CreateApiClientOptions) {
     updateSchedule,
     // telemetry (public; best-effort)
     sendTelemetry,
-    // stripe (Phase 1.5 deferral - returns null until BE ships)
+    // stripe
     createSetupIntent,
     // account
     changePassword,
+    // notifications (BE iter 2 round 2)
+    listNotificationLog,
+    resendNotification,
+    // channels (BE iter 2 round 2)
+    getTeamsChannel,
+    updateTeamsChannel,
+    deleteTeamsChannel,
+    getPagerDutyChannel,
+    updatePagerDutyChannel,
+    deletePagerDutyChannel,
   } as const
 }
 

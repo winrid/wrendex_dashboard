@@ -25,6 +25,7 @@ import {
 } from "@tanstack/react-table"
 import { useApiClient } from "@/api/useApiClient"
 import type { LinkEntry, LinkExploreParams, LinkResult } from "@/api/types"
+import { CsvExportButton } from "@/components/csv/CsvExportButton"
 import { DataTable } from "@/components/data-table/DataTable"
 import { Badge } from "@/components/ui/badge-fallback"
 import { Button } from "@/components/ui/button"
@@ -276,6 +277,8 @@ export function LinkExplorer() {
         onRelFilterChange={setRelFilter}
         search={search}
         onSearchChange={setSearch}
+        crawlId={crawlId}
+        csvParams={params}
       />
 
       <DataTable<LinkEntry>
@@ -320,6 +323,8 @@ type ToolbarProps = {
   onRelFilterChange: (v: RelFilter) => void
   search: string
   onSearchChange: (v: string) => void
+  crawlId: string
+  csvParams: Record<string, string | number | boolean | null | undefined>
 }
 
 function Toolbar({
@@ -329,6 +334,8 @@ function Toolbar({
   onRelFilterChange,
   search,
   onSearchChange,
+  crawlId,
+  csvParams,
 }: ToolbarProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -397,6 +404,14 @@ function Toolbar({
           </DropdownMenuCheckboxItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <div className="ml-auto">
+        <CsvExportButton
+          path={`/api/crawls/${crawlId}/links/explore`}
+          params={csvParams}
+          filename={`links-${crawlId}.csv`}
+        />
+      </div>
     </div>
   )
 }

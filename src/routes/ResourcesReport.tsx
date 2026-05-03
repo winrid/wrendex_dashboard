@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 import { useApiClient } from "@/api/useApiClient"
 import type { ResourceEntry, ResourcesResult } from "@/api/types"
+import { CsvExportButton } from "@/components/csv/CsvExportButton"
 import { DataTable } from "@/components/data-table/DataTable"
 import { Badge } from "@/components/ui/badge-fallback"
 import { Button } from "@/components/ui/button"
@@ -233,7 +234,13 @@ export function ResourcesReport() {
             <span>/</span>
             <span>Resources</span>
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight">Resources</h1>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h1 className="text-2xl font-semibold tracking-tight">Resources</h1>
+            <CsvExportButton
+              path={`/api/crawls/${crawlId}/resources`}
+              filename={`resources-${crawlId}.csv`}
+            />
+          </div>
           <p className="text-sm text-muted-foreground">
             Images, scripts, and stylesheets discovered during the crawl.
           </p>

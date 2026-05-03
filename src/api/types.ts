@@ -400,8 +400,22 @@ export type CrawlLogEntry = {
   noticeCount: number
 }
 
+/** Wire row for the Page Explorer table (BE iter 2 round 1). PageRow on the
+ *  BE side wraps Page via Jackson @JsonUnwrapped so every Page field is
+ *  flattened at the top level of each entry; PageRow extends Page with four
+ *  derived fields the FE table now reads: errorCount / warningCount /
+ *  noticeCount (per-page alert counts) and indexable (BE-side robotsMeta
+ *  derivation). FE code that consumed the legacy Page shape keeps working
+ *  because every Page field is still present. */
+export type PageRow = Page & {
+  errorCount: number
+  warningCount: number
+  noticeCount: number
+  indexable: boolean
+}
+
 export type PageResult = {
-  pages: Page[]
+  pages: PageRow[]
   total: number
   page: number
   size: number
@@ -885,4 +899,95 @@ export type ChangePasswordInput = {
 
 export type SetupIntent = {
   clientSecret: string
+  customerId: string
+}
+
+// ---------------------------------------------------------------------------
+// Notification delivery log (plan section 4A.5). The BE ships a per-tenant
+// log of every alert notification dispatch (channel, recipient, status,
+// retry counts, last error). Shipping in iter 2 round 2; the FE renders an
+// empty state when the endpoint 404s so we degrade gracefully while it
+// lands.
+// ---------------------------------------------------------------------------
+
+export type NotificationChannel = "EMAIL" | "SLACK" | "TEAMS" | "PAGERDUTY"
+
+export type NotificationStatus = "QUEUED" | "SENT" | "FAILED"
+
+export type NotificationLogEntry = {
+  id: string
+  tenantId: string
+  channel: NotificationChannel
+  recipient: string
+  status: NotificationStatus
+  alertType?: AlertType | string | null
+  alertId?: string | null
+  attemptCount: number
+  lastErrorMessage?: string | null
+  createdAt: string
+  sentAt?: string | null
+  /** Originating site for the alert (when applicable). */
+  siteId?: string | null
+}
+
+export type NotificationLogResult = {
+  items: NotificationLogEntry[]
+  total: number
+  page: number
+  size: number
+}
+
+export type ListNotificationLogParams = {
+  page?: number
+  size?: number
+  /** When more than one channel/status is supplied the FE joins them with
+   *  commas; the BE accepts a single value per param (CSV style or repeated).
+   *  We pass the comma-joined form for now and degrade client-side if needed. */
+  channel?: NotificationChannel | string
+  status?: NotificationStatus | string
+  /** ISO 8601 lower bound for `createdAt`. */
+  since?: string
+}
+
+export type ResendNotificationInput = {
+  channel: NotificationChannel
+}
+
+export type ResendNotificationResponse = {
+  deliveryId: string
+}
+
+// ---------------------------------------------------------------------------
+// MS Teams + PagerDuty channels (plan section 8.2). Mirror the SlackChannel /
+// EmailChannel shape. Endpoints land in the parallel BE iter 2 round 2; if
+// the GET 404s the FE treats the channel as not connected.
+// ---------------------------------------------------------------------------
+
+export type TeamsChannel = {
+  id: string
+  tenantId: string
+  webhookUrl: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type UpdateTeamsChannelInput = {
+  webhookUrl: string
+}
+
+export type SeverityFloor = "ERROR" | "WARNING" | "NOTICE"
+
+export type PagerDutyChannel = {
+  id: string
+  tenantId: string
+  /** The integration key is a secret; the BE returns a redacted preview only. */
+  integrationKeyPreview?: string | null
+  severityFloor: SeverityFloor
+  createdAt: string
+  updatedAt: string
+}
+
+export type UpdatePagerDutyChannelInput = {
+  integrationKey: string
+  severityFloor: SeverityFloor
 }

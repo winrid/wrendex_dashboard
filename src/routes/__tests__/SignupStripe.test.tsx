@@ -1,8 +1,8 @@
-// Stripe payment scaffolding (plan section 1.2 step 3 - Phase 1.5
-// fallback). Until the BE SetupIntent endpoint ships, the Signup route
-// captures the card POST-signup by redirecting to Stripe Checkout. The
-// PaymentMethodScaffolding card surfaces a small "we'll redirect after
-// signup" notice so the user knows what to expect.
+// Stripe payment scaffolding (plan section 1.2 step 3). The Signup route
+// surfaces a small "we'll capture a card" notice on mount when claimToken
+// is present; the real Stripe Elements PaymentElement renders on the
+// post-signup card-capture step (covered by separate flow tests once the
+// confirmSetup mock is wired in jsdom).
 
 import { describe, expect, it, vi, afterEach } from "vitest"
 import { cleanup, render, screen, waitFor } from "@testing-library/react"
@@ -50,8 +50,8 @@ function renderRoute(initial: string) {
   )
 }
 
-describe("Signup payment scaffolding (Phase 1.5 fallback)", () => {
-  it("renders the 'redirect after signup' notice when claimToken is present", async () => {
+describe("Signup payment notice", () => {
+  it("renders the 'capture a card' notice when claimToken is present", async () => {
     renderRoute(
       "/signup?claimToken=tok-claim&suggestedTenant=acme.example",
     )
@@ -60,7 +60,7 @@ describe("Signup payment scaffolding (Phase 1.5 fallback)", () => {
       expect(screen.getByTestId("payment-redirect-note")).toBeTruthy()
     })
     expect(
-      screen.getByText(/redirect you to a secure card capture step after signup/i),
+      screen.getByText(/capture a card so we can start your 14-day trial/i),
     ).toBeTruthy()
   })
 })

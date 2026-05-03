@@ -4,6 +4,8 @@ import { RequireAuth } from "@/auth/RequireAuth"
 import { Sites } from "@/routes/Sites"
 import { SiteDetail } from "@/routes/SiteDetail"
 import { CrawlHistory } from "@/routes/CrawlHistory"
+import { CrawlComparison } from "@/routes/CrawlComparison"
+import { NotificationLog } from "@/routes/NotificationLog"
 import { HealthHistory } from "@/routes/HealthHistory"
 import { LinkExplorer } from "@/routes/LinkExplorer"
 import { CrawlDetailComingSoon } from "@/routes/CrawlDetailComingSoon"
@@ -70,6 +72,7 @@ export const router = createBrowserRouter([
       { path: "sites", element: <Sites /> },
       { path: "sites/:siteId", element: <SiteDetail /> },
       { path: "sites/:siteId/settings", element: <SiteSettings /> },
+      { path: "sites/:siteId/compare", element: <CrawlComparison /> },
       { path: "sites/:siteId/pages", element: <PageDetail /> },
       { path: "sites/:siteId/health-history", element: <HealthHistory /> },
       { path: "sites/:siteId/crawls", element: <CrawlHistory /> },
@@ -115,6 +118,7 @@ export const router = createBrowserRouter([
       },
       { path: "sites/:siteId/inbox", element: <SiteInbox /> },
       { path: "inbox", element: <Inbox /> },
+      { path: "notifications/log", element: <NotificationLog /> },
       { path: "reports", element: <Reports /> },
       { path: "catalog", element: <Catalog /> },
       { path: "schedule", element: <Schedule /> },
