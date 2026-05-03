@@ -183,6 +183,19 @@ external component libraries.
   component cards (API / Crawler / Scheduler / Mongo) with operational /
   degraded / down badges + metric line. Falls back to a "coming soon"
   placeholder when the BE 404s.
+- `/changelog` - public Wrendex changelog (sec 13). Mounts above
+  RequireAuth. Bound to `listPublishedChangelog({limit:50})`. Renders one
+  entry per row with a tag badge (NEW / IMPROVED / FIX / BREAKING), the
+  formatted publish date, the title, and the body (plain text with
+  whitespace preserved; no markdown dep). The signed-in bell on the
+  AppShell handles unread-badge clearing, so this page is read-only.
+- `/admin/changelog` - internal staff-only editor (sec 13). Authenticated
+  but NOT tenant-scoped (the changelog is per-instance). DataTable bound to
+  `listAdminChangelog({includeDrafts:true})` with slug / title / tag /
+  publishedAt / updatedAt columns + per-row Edit + Delete. New entry
+  dialog drives `createChangelogEntry`; 409 surfaces inline against the
+  slug field. The BE returns 403 for non-staff callers; the route treats
+  403 the same as 404 and renders "You don't have access".
 - `/accept-invite` - public landing for tenant invitations (sec 14.2).
   Reads `?token=...`; on mount calls `getPublicInvite(token)` (skipAuth)
   and dispatches into one of: not-found (404), expired (410), already-
@@ -219,6 +232,18 @@ external component libraries.
   is reused across Members and Invites tabs and surfaces inline errors
   for 409 (duplicate pending) and a seat-cap upsell for 403/409 with a
   seat-hint message body.
+
+## What's new bell + modal (sec 13)
+
+The AppShell topbar mounts `<NotificationBell>` between `<ThemeToggle>` and
+`<UserMenu>`. The bell polls `getUnreadChangelog()` every 60s; when
+`unreadCount > 0` it renders a small accent-coloured badge over the icon
+(capped at "9+"). Click opens `<WhatsNewModal>` (in
+`src/components/changelog/WhatsNewModal.tsx`); on first render the modal
+fires `markChangelogSeen()` once so the next bell poll clears the badge,
+and renders entries from `listPublishedChangelog({limit:20})`. The footer
+links to `/changelog` for the full public list. The `<ChangelogEntryRow>`
+helper is exported from the same file and reused by the public route.
 
 ## Inbox bulk-action surface (sec 3, FE-D)
 

@@ -22,10 +22,13 @@ import type {
   AuthSignupResponse,
   BillingSnapshot,
   BulkActionResponse,
+  ChangelogEntry,
+  ChangelogResult,
   ChangePasswordInput,
   CrawlDiff,
   CrawlLogEntry,
   CrawlRun,
+  CreateChangelogEntryInput,
   CreateCheckoutSessionInput,
   CreateCheckoutSessionResponse,
   CreateInviteInput,
@@ -41,12 +44,14 @@ import type {
   HealthScorePoint,
   InvitePublicView,
   IssuesSummary,
+  ListAdminChangelogParams,
   ListInvoicesParams,
   ListInvoicesResult,
   LinkExploreParams,
   LinkResult,
   ListAuditLogParams,
   ListNotificationLogParams,
+  ListPublishedChangelogParams,
   ListShareLinksParams,
   Me,
   NotificationLogResult,
@@ -86,7 +91,9 @@ import type {
   StructuredDataResult,
   TelemetryEvent,
   Tenant,
+  UnreadChangelog,
   UpdateAlertRuleInput,
+  UpdateChangelogEntryInput,
   UpdateEmailChannelInput,
   UpdateSiteInput,
   UpdateSiteScheduleInput,
@@ -1187,6 +1194,61 @@ export function createApiClient(opts: CreateApiClientOptions) {
     return request<StatusResponse>("GET", "/api/status", { skipAuth: true })
   }
 
+  // -------------------------------------------------------------------------
+  // Changelog (plan section 13). Public list + per-user unread surface +
+  // staff-only admin CRUD. The PUBLIC list is unauthenticated (skipAuth);
+  // unread / mark-seen are authenticated; the admin endpoints 403 for non-
+  // staff and the FE treats 403 the same as 404 for that surface.
+  // -------------------------------------------------------------------------
+
+  function listPublishedChangelog(
+    params: ListPublishedChangelogParams = {},
+  ): Promise<ChangelogResult> {
+    return request<ChangelogResult>("GET", "/api/changelog", {
+      query: { limit: params.limit, since: params.since },
+      skipAuth: true,
+    })
+  }
+
+  function getUnreadChangelog(): Promise<UnreadChangelog> {
+    return request<UnreadChangelog>("GET", "/api/me/changelog/unread")
+  }
+
+  function markChangelogSeen(): Promise<undefined> {
+    return request<undefined>("POST", "/api/me/changelog/mark-seen")
+  }
+
+  function listAdminChangelog(
+    params: ListAdminChangelogParams = {},
+  ): Promise<ChangelogEntry[]> {
+    return request<ChangelogEntry[]>("GET", "/api/admin/changelog", {
+      query: { includeDrafts: params.includeDrafts ? true : undefined },
+    })
+  }
+
+  function createChangelogEntry(
+    input: CreateChangelogEntryInput,
+  ): Promise<ChangelogEntry> {
+    return request<ChangelogEntry>("POST", "/api/admin/changelog", {
+      body: input,
+    })
+  }
+
+  function updateChangelogEntry(
+    id: string,
+    patch: UpdateChangelogEntryInput,
+  ): Promise<ChangelogEntry> {
+    return request<ChangelogEntry>(
+      "PATCH",
+      `/api/admin/changelog/${id}`,
+      { body: patch },
+    )
+  }
+
+  function deleteChangelogEntry(id: string): Promise<undefined> {
+    return request<undefined>("DELETE", `/api/admin/changelog/${id}`)
+  }
+
   return {
     // auth
     signup,
@@ -1304,6 +1366,14 @@ export function createApiClient(opts: CreateApiClientOptions) {
     // public surfaces (no auth header)
     getPublicCatalog,
     getStatus,
+    // changelog (plan section 13)
+    listPublishedChangelog,
+    getUnreadChangelog,
+    markChangelogSeen,
+    listAdminChangelog,
+    createChangelogEntry,
+    updateChangelogEntry,
+    deleteChangelogEntry,
   } as const
 }
 

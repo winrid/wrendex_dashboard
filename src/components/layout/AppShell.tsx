@@ -37,6 +37,7 @@ import { Separator } from "@/components/ui/separator"
 import { Search, ChevronDown, LogOut, User, Building } from "lucide-react"
 import { Toaster } from "@/components/ui/sonner"
 import { ThemeToggle } from "./ThemeToggle"
+import { NotificationBell } from "./NotificationBell"
 import { CommandPalette } from "./CommandPalette"
 import { getNavItems } from "./nav-items"
 import { useAuth } from "@/auth/AuthProvider"
@@ -204,6 +205,7 @@ export function AppShell() {
           </Button>
           <div className="ml-auto flex items-center gap-1">
             <ThemeToggle />
+            <NotificationBell />
             <UserMenu />
           </div>
         </header>

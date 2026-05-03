@@ -1423,6 +1423,70 @@ export type SharedLinkInfo = {
 /** Payload bag the read-only screens render against. The set of populated
  *  fields depends on share.scope. The BE may add more fields here over time;
  *  unknown fields are ignored. */
+// ---------------------------------------------------------------------------
+// Changelog (plan section 13). Public list + per-user unread surface +
+// staff-only admin CRUD. The PUBLIC list is unauthenticated; the unread /
+// mark-seen endpoints are authenticated; the admin endpoints 403 for non-
+// staff. ChangelogTag mirrors the BE enum verbatim.
+// ---------------------------------------------------------------------------
+
+export type ChangelogTag = "NEW" | "IMPROVED" | "FIX" | "BREAKING"
+
+export type ChangelogEntry = {
+  id: string
+  slug: string
+  title: string
+  /** Markdown body. The FE renders it as plain text with whitespace
+   *  preserved (no markdown dep in the lockfile). */
+  body: string
+  tag: ChangelogTag
+  /** ISO 8601 published timestamp; null on draft entries. */
+  publishedAt?: string | null
+  createdAt: string
+  updatedAt: string
+  createdByUserId: string
+}
+
+export type ChangelogResult = {
+  items: ChangelogEntry[]
+  total: number
+}
+
+export type ListPublishedChangelogParams = {
+  /** Cap on entries returned. BE defaults to 20. */
+  limit?: number
+  /** ISO 8601 lower bound on publishedAt. */
+  since?: string
+}
+
+export type ListAdminChangelogParams = {
+  includeDrafts?: boolean
+}
+
+export type UnreadChangelog = {
+  unreadCount: number
+  /** ISO 8601 timestamp of the most recent published entry, or null when
+   *  the changelog is empty. */
+  latestPublishedAt: string | null
+}
+
+export type CreateChangelogEntryInput = {
+  slug: string
+  title: string
+  body: string
+  tag: ChangelogTag
+  /** Optional ISO 8601 publish timestamp. Omit / null to create a draft. */
+  publishedAt?: string | null
+}
+
+export type UpdateChangelogEntryInput = {
+  slug?: string
+  title?: string
+  body?: string
+  tag?: ChangelogTag
+  publishedAt?: string | null
+}
+
 export type SharedLinkPayload = {
   site?: Site | null
   crawlRun?: CrawlRun | null

@@ -20,3 +20,21 @@ if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
     }),
   })
 }
+
+// Radix primitives that measure their trigger (Select, Popover) reach for
+// ResizeObserver via @radix-ui/react-use-size; jsdom doesn't ship it. The
+// stub mounts the primitives without throwing during test runs.
+type ResizeObserverGlobal = { ResizeObserver?: unknown }
+if (
+  typeof globalThis !== "undefined" &&
+  typeof (globalThis as ResizeObserverGlobal).ResizeObserver !== "function"
+) {
+  class ResizeObserverStub {
+    constructor(_cb?: unknown) {}
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  ;(globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver =
+    ResizeObserverStub
+}

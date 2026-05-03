@@ -36,6 +36,8 @@ import { Audit } from "@/routes/Audit"
 import { AnonymousCrawlTeaser } from "@/routes/AnonymousCrawlTeaser"
 import { AnonymousCrawlClaiming } from "@/routes/AnonymousCrawlClaiming"
 import { Status } from "@/routes/Status"
+import { Changelog } from "@/routes/Changelog"
+import { AdminChangelog } from "@/routes/AdminChangelog"
 import { AcceptInvite } from "@/routes/AcceptInvite"
 import { SharedView } from "@/routes/SharedView"
 
@@ -59,6 +61,22 @@ export const router = createBrowserRouter([
   // RequireAuth so the marketing trust strip can deep-link unauthenticated
   // visitors here.
   { path: "/status", element: <Status /> },
+  // Public changelog page (plan section 13). PUBLIC. The bell on the
+  // AppShell handles unread badge clearing for signed-in users; this page
+  // is intentionally read-only.
+  { path: "/changelog", element: <Changelog /> },
+  // Internal admin-only changelog editor (plan section 13). AUTHENTICATED
+  // but not tenant-scoped because the changelog is per-instance, not per
+  // tenant. The BE returns 403 from listAdminChangelog when the caller is
+  // not staff; the FE renders "You don't have access" in that branch.
+  {
+    path: "/admin/changelog",
+    element: (
+      <RequireAuth>
+        <AdminChangelog />
+      </RequireAuth>
+    ),
+  },
   // Accept-invite landing page (plan section 14.2). PUBLIC; the recipient
   // clicks the email link and lands here with ?token=... before they have
   // signed in.
