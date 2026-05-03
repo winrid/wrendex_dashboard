@@ -20,6 +20,8 @@ import { IssueQueue } from "@/components/site-detail/IssueQueue"
 import { RegressionStrip } from "@/components/site-detail/RegressionStrip"
 import { CrawlRunningView } from "@/components/site-detail/CrawlRunningView"
 import { VerificationDialog } from "@/components/site-verification/VerificationDialog"
+import { ShareButton } from "@/components/share/ShareButton"
+import { useReadOnly } from "@/components/share/ReadOnlyContext"
 import {
   formatCadence,
   relativeTime,
@@ -65,6 +67,7 @@ export function SiteDetail() {
   }>()
   const client = useApiClient()
   const queryClient = useQueryClient()
+  const readOnly = useReadOnly()
   const [verifyOpen, setVerifyOpen] = useState(false)
   const [runningCrawlId, setRunningCrawlId] = useState<string | null>(null)
 
@@ -193,6 +196,8 @@ export function SiteDetail() {
               <Badge className="bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
                 Verified
               </Badge>
+            ) : readOnly ? (
+              <Badge variant="outline">Unverified</Badge>
             ) : (
               <button
                 type="button"
@@ -205,64 +210,69 @@ export function SiteDetail() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            onClick={() => startMut.mutate()}
-            disabled={startMut.isPending || runningCrawlId != null}
-          >
-            <PlayIcon />
-            <span>Run audit now</span>
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() =>
-              toast.info("Pause monitoring lands with the schedule editor")
-            }
-          >
-            <PauseIcon />
-            <span>Pause monitoring</span>
-          </Button>
-          <Button asChild variant="outline" size="sm">
-            <Link to={`/t/${tenantId}/sites/${siteId}/crawls`}>
-              Crawl history
-            </Link>
-          </Button>
-          <Button asChild variant="outline" size="sm">
-            <Link to={`/t/${tenantId}/sites/${siteId}/health-history`}>
-              Health history
-            </Link>
-          </Button>
-          {latestCrawlId ? (
+          {!readOnly ? (
             <>
+              <Button
+                size="sm"
+                onClick={() => startMut.mutate()}
+                disabled={startMut.isPending || runningCrawlId != null}
+              >
+                <PlayIcon />
+                <span>Run audit now</span>
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  toast.info("Pause monitoring lands with the schedule editor")
+                }
+              >
+                <PauseIcon />
+                <span>Pause monitoring</span>
+              </Button>
               <Button asChild variant="outline" size="sm">
-                <Link
-                  to={`/t/${tenantId}/sites/${siteId}/crawls/${latestCrawlId}/structure`}
-                >
-                  Site structure
+                <Link to={`/t/${tenantId}/sites/${siteId}/crawls`}>
+                  Crawl history
                 </Link>
               </Button>
               <Button asChild variant="outline" size="sm">
-                <Link
-                  to={`/t/${tenantId}/sites/${siteId}/crawls/${latestCrawlId}/duplicates`}
-                >
-                  Duplicates
+                <Link to={`/t/${tenantId}/sites/${siteId}/health-history`}>
+                  Health history
                 </Link>
               </Button>
+              {latestCrawlId ? (
+                <>
+                  <Button asChild variant="outline" size="sm">
+                    <Link
+                      to={`/t/${tenantId}/sites/${siteId}/crawls/${latestCrawlId}/structure`}
+                    >
+                      Site structure
+                    </Link>
+                  </Button>
+                  <Button asChild variant="outline" size="sm">
+                    <Link
+                      to={`/t/${tenantId}/sites/${siteId}/crawls/${latestCrawlId}/duplicates`}
+                    >
+                      Duplicates
+                    </Link>
+                  </Button>
+                  <Button asChild variant="outline" size="sm">
+                    <Link
+                      to={`/t/${tenantId}/sites/${siteId}/crawls/${latestCrawlId}/structured-data`}
+                    >
+                      Structured data
+                    </Link>
+                  </Button>
+                </>
+              ) : null}
+              <ShareButton scope="SITE" targetId={siteId} />
               <Button asChild variant="outline" size="sm">
-                <Link
-                  to={`/t/${tenantId}/sites/${siteId}/crawls/${latestCrawlId}/structured-data`}
-                >
-                  Structured data
+                <Link to={`/t/${tenantId}/sites/${siteId}/settings`}>
+                  Settings
                 </Link>
               </Button>
             </>
           ) : null}
-          <Button asChild variant="outline" size="sm">
-            <Link to={`/t/${tenantId}/sites/${siteId}/settings`}>
-              Settings
-            </Link>
-          </Button>
         </div>
       </div>
 

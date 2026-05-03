@@ -37,6 +37,7 @@ import { AnonymousCrawlTeaser } from "@/routes/AnonymousCrawlTeaser"
 import { AnonymousCrawlClaiming } from "@/routes/AnonymousCrawlClaiming"
 import { Status } from "@/routes/Status"
 import { AcceptInvite } from "@/routes/AcceptInvite"
+import { SharedView } from "@/routes/SharedView"
 
 // Public routes mount above RequireAuth so unauthenticated users can reach
 // them without being bounced to /login. Everything else lives inside the
@@ -62,6 +63,11 @@ export const router = createBrowserRouter([
   // clicks the email link and lands here with ?token=... before they have
   // signed in.
   { path: "/accept-invite", element: <AcceptInvite /> },
+  // Public shared-view route (plan section P3 iter 2). PUBLIC; the recipient
+  // hits /shared/:token and the page resolves the share via the public POST
+  // /api/shared/{token}. Mounted above RequireAuth so anonymous viewers can
+  // load the view without bouncing through /login.
+  { path: "/shared/:token", element: <SharedView /> },
   {
     path: "/",
     element: (

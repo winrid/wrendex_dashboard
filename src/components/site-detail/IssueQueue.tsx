@@ -5,6 +5,7 @@
 
 import { Link } from "react-router-dom"
 import type { IssuesSummary } from "@/api/types"
+import { useReadOnly } from "@/components/share/ReadOnlyContext"
 import { cn } from "@/lib/utils"
 
 export type IssueQueueProps = {
@@ -32,6 +33,7 @@ export function IssueQueue({
   summary,
   healthScore,
 }: IssueQueueProps) {
+  const readOnly = useReadOnly()
   const rows = [...summary.byCategory].sort(
     (a, b) => totalFor(b) - totalFor(a),
   )
@@ -85,12 +87,14 @@ export function IssueQueue({
                 <span className="text-xs tabular-nums text-muted-foreground">
                   {total}
                 </span>
-                <Link
-                  className="text-xs font-medium text-primary hover:underline"
-                  to={`/t/${tenantId}/crawls/${crawlId}/issues/category/${encodeURIComponent(row.category)}`}
-                >
-                  View
-                </Link>
+                {readOnly ? null : (
+                  <Link
+                    className="text-xs font-medium text-primary hover:underline"
+                    to={`/t/${tenantId}/crawls/${crawlId}/issues/category/${encodeURIComponent(row.category)}`}
+                  >
+                    View
+                  </Link>
+                )}
               </div>
             </li>
           )

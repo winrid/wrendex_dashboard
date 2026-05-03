@@ -22,7 +22,7 @@ import {
   type PaginationState,
   type SortingState,
 } from "@tanstack/react-table"
-import { ExternalLinkIcon, FileTextIcon, Share2Icon } from "lucide-react"
+import { ExternalLinkIcon, FileTextIcon } from "lucide-react"
 import { useApiClient } from "@/api/useApiClient"
 import type {
   Alert,
@@ -45,6 +45,8 @@ import {
   type AlertsTableToolbarState,
 } from "@/components/alerts-table/AlertsTable"
 import { AlertDetailDrawer } from "@/components/alerts-table/AlertDetailDrawer"
+import { ShareButton } from "@/components/share/ShareButton"
+import { useReadOnly } from "@/components/share/ReadOnlyContext"
 import { cn } from "@/lib/utils"
 import { formatBytes } from "@/lib/format"
 
@@ -296,16 +298,7 @@ function Header({
             <FileTextIcon />
             <span>View raw HTML</span>
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              toast.info("Sharing pages will land in a later iteration.")
-            }
-          >
-            <Share2Icon />
-            <span>Share page</span>
-          </Button>
+          <ShareButton scope="PAGE_DETAIL" targetId={page.id} label="Share page" />
         </div>
       </div>
     </div>
@@ -656,6 +649,7 @@ function AlertsTab({
   invalidateKey: () => void
 }) {
   const client = useApiClient()
+  const readOnly = useReadOnly()
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
     pageSize: 25,
@@ -732,8 +726,8 @@ function AlertsTab({
         toolbar={toolbar}
         onToolbarChange={setToolbar}
         hideCategoryFilter
-        onIgnore={(a) => ignoreMut.mutate(a.id)}
-        onUnignore={(a) => unignoreMut.mutate(a.id)}
+        onIgnore={readOnly ? undefined : (a) => ignoreMut.mutate(a.id)}
+        onUnignore={readOnly ? undefined : (a) => unignoreMut.mutate(a.id)}
         onRowClick={(a) => setOpenAlert(a)}
       />
       <AlertDetailDrawer
@@ -744,14 +738,22 @@ function AlertsTab({
         }}
         tenantId={tenantId}
         siteId={siteId}
-        onIgnore={(a) => {
-          ignoreMut.mutate(a.id)
-          setOpenAlert(null)
-        }}
-        onUnignore={(a) => {
-          unignoreMut.mutate(a.id)
-          setOpenAlert(null)
-        }}
+        onIgnore={
+          readOnly
+            ? undefined
+            : (a) => {
+                ignoreMut.mutate(a.id)
+                setOpenAlert(null)
+              }
+        }
+        onUnignore={
+          readOnly
+            ? undefined
+            : (a) => {
+                unignoreMut.mutate(a.id)
+                setOpenAlert(null)
+              }
+        }
       />
     </>
   )

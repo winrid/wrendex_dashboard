@@ -21,6 +21,7 @@ const getEmailChannel = vi.fn().mockResolvedValue({
 const updateEmailChannel = vi.fn()
 const listSitesByTenant = vi.fn().mockResolvedValue([])
 const changePassword = vi.fn()
+const listShareLinks = vi.fn().mockResolvedValue([])
 
 vi.mock("@/api/useApiClient", () => ({
   useApiClient: () => ({
@@ -28,6 +29,7 @@ vi.mock("@/api/useApiClient", () => ({
     updateEmailChannel,
     listSitesByTenant,
     changePassword,
+    listShareLinks,
   }),
 }))
 
@@ -69,12 +71,13 @@ function renderRoute() {
 }
 
 describe("Settings page", () => {
-  it("renders the three tabs and switches content when clicked", async () => {
+  it("renders the four tabs and switches content when clicked", async () => {
     renderRoute()
 
     // Account tab is the default; the email field is visible.
     expect(screen.getByRole("tab", { name: "Account" })).toBeTruthy()
     expect(screen.getByRole("tab", { name: "Tenant" })).toBeTruthy()
+    expect(screen.getByRole("tab", { name: "Sharing" })).toBeTruthy()
     expect(screen.getByRole("tab", { name: "Sites" })).toBeTruthy()
     const emailField = screen.getByLabelText("Email") as HTMLInputElement
     expect(emailField.value).toBe("user@example.com")

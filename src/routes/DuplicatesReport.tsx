@@ -26,6 +26,7 @@ import type { DuplicateGroup, DuplicatesResult } from "@/api/types"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge-fallback"
 import { CsvExportButton } from "@/components/csv/CsvExportButton"
+import { ShareButton } from "@/components/share/ShareButton"
 import { cn } from "@/lib/utils"
 
 type TabKind = "title" | "description" | "body"
@@ -178,10 +179,17 @@ export function DuplicatesReport() {
           <h1 className="text-2xl font-semibold tracking-tight">
             Duplicate content
           </h1>
-          <CsvExportButton
-            path={`/api/crawls/${crawlId}/duplicates`}
-            filename={`duplicates-${crawlId}.csv`}
-          />
+          <div className="flex items-center gap-2">
+            <CsvExportButton
+              path={`/api/crawls/${crawlId}/duplicates`}
+              filename={`duplicates-${crawlId}.csv`}
+            />
+            <ShareButton
+              scope="CRAWL_REPORT"
+              targetId={siteId}
+              subResource="duplicates"
+            />
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">

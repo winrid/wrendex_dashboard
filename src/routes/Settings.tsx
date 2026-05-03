@@ -7,7 +7,7 @@
 //   Sites    - list of sites with a link to per-site settings.
 
 import { useEffect, useMemo, useState } from "react"
-import { Link, useParams } from "react-router-dom"
+import { Link, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import { useForm } from "react-hook-form"
@@ -55,6 +55,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Toaster } from "@/components/ui/sonner"
+import { SharingTab } from "@/components/share/SharingTab"
 import { siteDisplayName } from "@/lib/format"
 import { XIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -1044,7 +1045,28 @@ function SitesTab({ tenantId }: { tenantId: string }) {
 
 export function Settings() {
   const { tenantId = "default" } = useParams<{ tenantId: string }>()
-  const [tab, setTab] = useState("account")
+  const [searchParams, setSearchParams] = useSearchParams()
+  // The ShareButton "Manage all share links" affordance deep-links to
+  // ?tab=sharing; sync the URL so refreshes preserve the active tab and
+  // direct links land on the right pane.
+  const initialTab = searchParams.get("tab") ?? "account"
+  const [tab, setTab] = useState(initialTab)
+
+  const onTabChange = (next: string) => {
+    setTab(next)
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev)
+        if (next === "account") {
+          params.delete("tab")
+        } else {
+          params.set("tab", next)
+        }
+        return params
+      },
+      { replace: true },
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -1055,10 +1077,11 @@ export function Settings() {
           Account, tenant, and per-site configuration.
         </p>
       </div>
-      <Tabs value={tab} onValueChange={setTab}>
+      <Tabs value={tab} onValueChange={onTabChange}>
         <TabsList>
           <TabsTrigger value="account">Account</TabsTrigger>
           <TabsTrigger value="tenant">Tenant</TabsTrigger>
+          <TabsTrigger value="sharing">Sharing</TabsTrigger>
           <TabsTrigger value="sites">Sites</TabsTrigger>
         </TabsList>
         <TabsContent
@@ -1074,6 +1097,13 @@ export function Settings() {
           data-testid="tab-tenant"
         >
           <TenantTab tenantId={tenantId} />
+        </TabsContent>
+        <TabsContent
+          value="sharing"
+          className={cn("mt-4")}
+          data-testid="tab-sharing"
+        >
+          <SharingTab tenantId={tenantId} />
         </TabsContent>
         <TabsContent
           value="sites"

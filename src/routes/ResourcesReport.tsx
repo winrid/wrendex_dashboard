@@ -22,6 +22,7 @@ import {
 import { useApiClient } from "@/api/useApiClient"
 import type { ResourceEntry, ResourcesResult } from "@/api/types"
 import { CsvExportButton } from "@/components/csv/CsvExportButton"
+import { ShareButton } from "@/components/share/ShareButton"
 import { DataTable } from "@/components/data-table/DataTable"
 import { Badge } from "@/components/ui/badge-fallback"
 import { Button } from "@/components/ui/button"
@@ -236,10 +237,17 @@ export function ResourcesReport() {
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h1 className="text-2xl font-semibold tracking-tight">Resources</h1>
-            <CsvExportButton
-              path={`/api/crawls/${crawlId}/resources`}
-              filename={`resources-${crawlId}.csv`}
-            />
+            <div className="flex items-center gap-2">
+              <CsvExportButton
+                path={`/api/crawls/${crawlId}/resources`}
+                filename={`resources-${crawlId}.csv`}
+              />
+              <ShareButton
+                scope="CRAWL_REPORT"
+                targetId={siteId}
+                subResource="resources"
+              />
+            </div>
           </div>
           <p className="text-sm text-muted-foreground">
             Images, scripts, and stylesheets discovered during the crawl.

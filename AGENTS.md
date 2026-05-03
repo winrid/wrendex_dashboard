@@ -189,6 +189,25 @@ external component libraries.
   accepted (409), signed-out (sign-in / sign-up CTAs that round-trip the
   token), signed-in-mismatch (sign-out CTA), signed-in-match (Accept
   button calling `acceptInvite(token)`). Mounts above RequireAuth.
+- `/shared/:token` - public read-only share view (P3 iter 2). Mounts above
+  RequireAuth. Calls `resolveSharedLink(token, {password?})` (skipAuth) and
+  dispatches on `share.scope` (SITE / CRAWL_REPORT / PAGE_DETAIL) into the
+  matching read-only renderer. Surfaces a small banner ("Read-only share
+  from <tenantName>. Expires <relative>.") + the Wrendex logo. No sidebar,
+  no tenant switcher. The route mounts the renderers under
+  `<ReadOnlyProvider value={true}>`; nested action buttons (Run audit /
+  Pause / Settings link / Ignore / Unignore / ShareButton itself) check
+  `useReadOnly()` from `src/components/share/ReadOnlyContext.tsx` and hide
+  themselves so the recipient cannot mutate state. The `Sharing` tab on
+  `/t/:tenantId/settings` (4th tab) lists every share link via
+  `listShareLinks` with create / copy / revoke + a "Show revoked" toggle.
+  `<ShareButton scope=... targetId=... subResource?=...>` from
+  `src/components/share/ShareButton.tsx` is mounted next to the existing
+  CSV button on every shareable report (SiteDetail header, health-history,
+  pages / links / redirects / duplicates / resources / structured-data
+  reports, page detail). `/sites` (the site list) and the structure tree
+  view are intentionally not shareable in v1.
+
 - `/t/:tenantId/team` - Team page (sec 14.2). Tabs: Members, Invites,
   Audit log. Members tab is bound to `listTenantMembers` with per-row
   Change role / Remove / Make owner actions (transfer ownership flow);

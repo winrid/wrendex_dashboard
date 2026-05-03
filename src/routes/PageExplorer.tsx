@@ -23,6 +23,7 @@ import { useApiClient } from "@/api/useApiClient"
 import type { PageExploreParams, PageResult, PageRow } from "@/api/types"
 import { DataTable } from "@/components/data-table/DataTable"
 import { CsvExportButton } from "@/components/csv/CsvExportButton"
+import { ShareButton } from "@/components/share/ShareButton"
 import { Badge } from "@/components/ui/badge-fallback"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -316,6 +317,7 @@ export function PageExplorer() {
           statusCode: params.statusCode,
         }}
         crawlId={crawlId}
+        siteId={siteId}
       />
 
       <DataTable<PageRow>
@@ -368,6 +370,7 @@ type ToolbarProps = {
   onToggleStatusCode: (code: number, on: boolean) => void
   csvParams: Record<string, string | number | boolean | null | undefined>
   crawlId: string
+  siteId: string
 }
 
 function Toolbar({
@@ -377,6 +380,7 @@ function Toolbar({
   onToggleStatusCode,
   csvParams,
   crawlId,
+  siteId,
 }: ToolbarProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -417,11 +421,16 @@ function Toolbar({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-2">
         <CsvExportButton
           path={`/api/crawls/${crawlId}/pages/explore`}
           params={csvParams}
           filename={`pages-${crawlId}.csv`}
+        />
+        <ShareButton
+          scope="CRAWL_REPORT"
+          targetId={siteId}
+          subResource="pages"
         />
       </div>
     </div>

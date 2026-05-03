@@ -1239,3 +1239,135 @@ export type ListAuditLogParams = {
   /** Single-action filter (BE accepts one value per param). */
   action?: AuditAction
 }
+
+// ---------------------------------------------------------------------------
+// Share links (plan section P3 iter 2). Per-tenant short-lived public links
+// that surface a read-only view of a site, a crawl-level report, or a single
+// page detail. The token is the URL slug; it gates POST /api/shared/{token}
+// (with optional password) which returns the share metadata + the resolved
+// payload the FE needs to render the matching read-only screen.
+// ---------------------------------------------------------------------------
+
+/** What the share targets. SITE shares the site overview. CRAWL_REPORT scopes
+ *  the share to a single crawl-level report (pair with subResource).
+ *  PAGE_DETAIL shares a single page detail. */
+export type ShareScope = "SITE" | "CRAWL_REPORT" | "PAGE_DETAIL"
+
+/** For CRAWL_REPORT scope only. Picks which report the shared view renders.
+ *  null on SITE / PAGE_DETAIL shares. */
+export type ShareSubResource =
+  | "redirects"
+  | "duplicates"
+  | "structured-data"
+  | "links"
+  | "pages"
+  | "resources"
+  | "issues"
+  | null
+
+/** Persisted share link row. The `url` field is the absolute, copy-and-paste
+ *  ready URL for the recipient; the FE reuses it instead of reconstructing
+ *  the path. */
+export type ShareLink = {
+  id: string
+  tenantId: string
+  scope: ShareScope
+  /** Site id for SITE / CRAWL_REPORT shares; page id for PAGE_DETAIL. The
+   *  BE resolves the matching payload server-side. */
+  targetId: string
+  subResource?: ShareSubResource
+  /** Public token used in /shared/{token}. Always present on read; only the
+   *  recipient should know it. */
+  token: string
+  /** Pre-built URL for copy-to-clipboard. */
+  url: string
+  /** Free-form label the creator typed into the dialog (e.g. "Q3 audit for
+   *  client X"). Optional. */
+  label?: string | null
+  /** True when the share is password-protected. The password itself is
+   *  never returned. */
+  passwordProtected: boolean
+  /** ISO 8601 expiry timestamp; null means "never expires". */
+  expiresAt?: string | null
+  /** ISO 8601 creation + revocation timestamps. revokedAt non-null => revoked. */
+  createdAt: string
+  revokedAt?: string | null
+  /** Best-effort view counter incremented by the BE on each successful
+   *  resolve. May be 0 when the BE has not shipped the counter yet. */
+  viewCount?: number
+  createdByUserId?: string | null
+  createdByEmail?: string | null
+  /** Plan-gate hints surfaced in the dialog footer when the BE returns them.
+   *  Both fields are optional; leave them off when the BE has not wired the
+   *  count yet so the footer hides entirely. */
+  planLimit?: number | null
+  planUsed?: number | null
+}
+
+export type CreateShareLinkInput = {
+  scope: ShareScope
+  targetId: string
+  subResource?: ShareSubResource
+  password?: string
+  expiresAt?: string | null
+  label?: string
+}
+
+export type ListShareLinksParams = {
+  includeRevoked?: boolean
+}
+
+export type ResolveShareInput = {
+  password?: string
+}
+
+/** Successful payload from POST /api/shared/{token}. The BE inlines the data
+ *  the FE needs to render the read-only view so we don't have to make
+ *  follow-up tenant-scoped calls (which would 401 for the recipient). */
+export type SharedLinkResult = {
+  share: SharedLinkInfo
+  payload: SharedLinkPayload
+}
+
+/** Slim metadata about the share, surfaced on the public banner. */
+export type SharedLinkInfo = {
+  scope: ShareScope
+  subResource?: ShareSubResource
+  label?: string | null
+  expiresAt?: string | null
+  tenantName: string
+  /** Hostname / display name of the site the share targets, used in the
+   *  banner subtitle so recipients see which site they're looking at. */
+  siteDisplayName?: string | null
+}
+
+/** Payload bag the read-only screens render against. The set of populated
+ *  fields depends on share.scope. The BE may add more fields here over time;
+ *  unknown fields are ignored. */
+export type SharedLinkPayload = {
+  site?: Site | null
+  crawlRun?: CrawlRun | null
+  /** Health-score timeseries for SITE-scope shares. */
+  healthScore?: HealthScorePoint[] | null
+  /** Issues summary for SITE-scope shares. */
+  issuesSummary?: IssuesSummary | null
+  /** Page detail for PAGE_DETAIL-scope shares. */
+  page?: Page | null
+  /** Pre-fetched alerts for PAGE_DETAIL-scope shares. */
+  pageAlerts?: Alert[] | null
+  /** Per-report payloads for CRAWL_REPORT scope. The BE populates only the
+   *  one matching share.subResource. */
+  pages?: PageResult | null
+  links?: LinkResult | null
+  redirects?: RedirectsResult | null
+  duplicates?: DuplicatesResult | null
+  resources?: ResourcesResult | null
+  structuredData?: StructuredDataResult | null
+  /** Echo of crawl-level alerts (used by the structured-data view to merge
+   *  JSON_LD_* alerts in). */
+  crawlAlerts?: Alert[] | null
+  /** When 401 password-required happens through the same wire shape the BE
+   *  may opt to return this discriminator. The dedicated 401 body is the
+   *  primary signal; this is left here as documentation. */
+  passwordRequired?: boolean
+}

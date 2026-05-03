@@ -34,6 +34,7 @@ import type {
 } from "@/api/types"
 import { Badge } from "@/components/ui/badge-fallback"
 import { Button } from "@/components/ui/button"
+import { ShareButton } from "@/components/share/ShareButton"
 import { cn } from "@/lib/utils"
 
 type FilterKind = "all" | "with-errors" | "google-eligible"
@@ -351,9 +352,16 @@ export function StructuredDataReport() {
           <span>/</span>
           <span>Structured data</span>
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Structured data
-        </h1>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Structured data
+          </h1>
+          <ShareButton
+            scope="CRAWL_REPORT"
+            targetId={siteId}
+            subResource="structured-data"
+          />
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">
             {sdQ.data?.totalPagesWithStructuredData ?? 0} pages

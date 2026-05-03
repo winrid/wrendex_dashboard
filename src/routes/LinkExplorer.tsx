@@ -26,6 +26,7 @@ import {
 import { useApiClient } from "@/api/useApiClient"
 import type { LinkEntry, LinkExploreParams, LinkResult } from "@/api/types"
 import { CsvExportButton } from "@/components/csv/CsvExportButton"
+import { ShareButton } from "@/components/share/ShareButton"
 import { DataTable } from "@/components/data-table/DataTable"
 import { Badge } from "@/components/ui/badge-fallback"
 import { Button } from "@/components/ui/button"
@@ -278,6 +279,7 @@ export function LinkExplorer() {
         search={search}
         onSearchChange={setSearch}
         crawlId={crawlId}
+        siteId={siteId}
         csvParams={params}
       />
 
@@ -324,6 +326,7 @@ type ToolbarProps = {
   search: string
   onSearchChange: (v: string) => void
   crawlId: string
+  siteId: string
   csvParams: Record<string, string | number | boolean | null | undefined>
 }
 
@@ -335,6 +338,7 @@ function Toolbar({
   search,
   onSearchChange,
   crawlId,
+  siteId,
   csvParams,
 }: ToolbarProps) {
   return (
@@ -405,11 +409,16 @@ function Toolbar({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-2">
         <CsvExportButton
           path={`/api/crawls/${crawlId}/links/explore`}
           params={csvParams}
           filename={`links-${crawlId}.csv`}
+        />
+        <ShareButton
+          scope="CRAWL_REPORT"
+          targetId={siteId}
+          subResource="links"
         />
       </div>
     </div>

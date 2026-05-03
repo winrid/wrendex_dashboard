@@ -28,6 +28,7 @@ import type {
 } from "@/api/types"
 import { Button } from "@/components/ui/button"
 import { DataTable } from "@/components/data-table/DataTable"
+import { ShareButton } from "@/components/share/ShareButton"
 import { cn } from "@/lib/utils"
 import { relativeTime, siteDisplayName } from "@/lib/format"
 
@@ -287,22 +288,25 @@ export function HealthHistory() {
               Last {rangeDays(range)} days
             </p>
           </div>
-          <div
-            className="flex gap-1"
-            role="group"
-            aria-label="Compare range"
-          >
-            {RANGE_BUTTONS.map((r) => (
-              <Button
-                key={r.key}
-                variant={range === r.key ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setRange(r.key)}
-                aria-pressed={range === r.key}
-              >
-                {r.label}
-              </Button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div
+              className="flex gap-1"
+              role="group"
+              aria-label="Compare range"
+            >
+              {RANGE_BUTTONS.map((r) => (
+                <Button
+                  key={r.key}
+                  variant={range === r.key ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setRange(r.key)}
+                  aria-pressed={range === r.key}
+                >
+                  {r.label}
+                </Button>
+              ))}
+            </div>
+            <ShareButton scope="SITE" targetId={siteId} />
           </div>
         </div>
       </div>

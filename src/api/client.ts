@@ -31,6 +31,7 @@ import type {
   CreateInviteInput,
   CreatePortalSessionInput,
   CreatePortalSessionResponse,
+  CreateShareLinkInput,
   CreateSiteInput,
   CreateTenantInput,
   DirectoryNode,
@@ -44,6 +45,7 @@ import type {
   LinkResult,
   ListAuditLogParams,
   ListNotificationLogParams,
+  ListShareLinksParams,
   Me,
   NotificationLogResult,
   Page,
@@ -56,8 +58,11 @@ import type {
   RedirectsResult,
   ResendNotificationInput,
   ResendNotificationResponse,
+  ResolveShareInput,
   ResourcesResult,
   SetupIntent,
+  ShareLink,
+  SharedLinkResult,
   Site,
   SiteSchedule,
   SlackChannel,
@@ -1055,6 +1060,64 @@ export function createApiClient(opts: CreateApiClientOptions) {
   }
 
   // -------------------------------------------------------------------------
+  // Share links (plan section P3 iter 2). Per-tenant create / list / revoke
+  // + the public POST /api/shared/{token} resolver. The resolver is opted
+  // out of the global Authorization header (skipAuth) so anonymous
+  // recipients can hit it without leaking somebody else's bearer token.
+  // -------------------------------------------------------------------------
+
+  function listShareLinks(
+    tenantId: string,
+    params: ListShareLinksParams = {},
+  ): Promise<ShareLink[]> {
+    return request<ShareLink[]>(
+      "GET",
+      `/api/tenants/${tenantId}/share-links`,
+      {
+        query: {
+          includeRevoked: params.includeRevoked ? true : undefined,
+        },
+      },
+    )
+  }
+
+  function createShareLink(
+    tenantId: string,
+    input: CreateShareLinkInput,
+  ): Promise<ShareLink> {
+    return request<ShareLink>(
+      "POST",
+      `/api/tenants/${tenantId}/share-links`,
+      { body: input },
+    )
+  }
+
+  function revokeShareLink(
+    tenantId: string,
+    id: string,
+  ): Promise<undefined> {
+    return request<undefined>(
+      "DELETE",
+      `/api/tenants/${tenantId}/share-links/${id}`,
+    )
+  }
+
+  /** PUBLIC. Resolves a share token. The BE returns 401 with
+   *  {passwordRequired: true} if the share is password-protected and the
+   *  caller did not supply (or supplied a wrong) password. The FE catches
+   *  the 401, checks the body, and re-prompts. */
+  function resolveSharedLink(
+    token: string,
+    input: ResolveShareInput = {},
+  ): Promise<SharedLinkResult> {
+    return request<SharedLinkResult>(
+      "POST",
+      `/api/shared/${encodeURIComponent(token)}`,
+      { body: input, skipAuth: true },
+    )
+  }
+
+  // -------------------------------------------------------------------------
   // Public catalog (plan section 6 / sec 0.3e iter 2). PUBLIC, no auth.
   // The dashboard's static checkCatalog.ts is the source of truth for
   // human-readable copy; this endpoint is used to surface drift between FE
@@ -1182,6 +1245,11 @@ export function createApiClient(opts: CreateApiClientOptions) {
     removeMember,
     transferOwnership,
     listAuditLog,
+    // share links (P3 iter 2)
+    listShareLinks,
+    createShareLink,
+    revokeShareLink,
+    resolveSharedLink,
     // public surfaces (no auth header)
     getPublicCatalog,
     getStatus,
