@@ -120,14 +120,27 @@ export type AlertQueryResult = {
 /** Type alias kept for consumers that prefer the plan-canonical name. */
 export type AlertList = AlertQueryResult
 
-/** Response of GET /api/crawls/{crawlId}/diff?against={prevCrawlId}. */
+/** Response of GET /api/crawls/{crawlId}/diff?against={prevCrawlId}.
+ *
+ * The arrays are capped at DIFF_MAX (200) on the BE; the *Count fields are
+ * the true totals before capping so the FE can render accurate numbers.
+ * `skipped` partitions out alerts whose pageUrl wasn't visited by the current
+ * crawl (e.g. when a polite re-crawl only re-tested 30 of 982 pages) so they
+ * aren't falsely classified as "resolved".
+ */
 export type CrawlDiff = {
   new: GenAlert[]
   resolved: GenAlert[]
   persisted: GenAlert[]
+  skipped: GenAlert[]
+  newCount: number
+  resolvedCount: number
+  persistedCount: number
+  skippedCount: number
   newTruncated: boolean
   resolvedTruncated: boolean
   persistedTruncated: boolean
+  skippedTruncated: boolean
 }
 
 export type CategorySummary = {

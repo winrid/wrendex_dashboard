@@ -137,4 +137,82 @@ describe("Catalog explorer", () => {
       expect(screen.queryByTestId("catalog-entry-MISSING_ALT_TEXT")).toBeNull()
     })
   })
+
+  it("defaults the 'Show only firing' toggle to ON when a site is selected and hides zero-count rows", async () => {
+    getPublicCatalog.mockResolvedValue(SAMPLE_BE_CATALOG)
+    listSitesByTenant.mockResolvedValue([
+      { id: "s_1", url: "https://acme.example/", tenantId: "t_1" } as never,
+    ])
+    listCrawlsBySite.mockResolvedValue([])
+
+    // Per-type listSiteAlerts call: TITLE_MISSING fires (total=3),
+    // MISSING_ALT_TEXT does not (total=0). Anything else returns 0 too.
+    listSiteAlerts.mockImplementation(
+      async (
+        _siteId: string,
+        opts: { type?: string },
+      ) => {
+        const total = opts.type === "TITLE_MISSING" ? 3 : 0
+        return { items: [], total, page: 0, size: 1 }
+      },
+    )
+
+    renderRoute()
+
+    // Toggle is rendered and ON by default once a site is selected (the
+    // useEffect auto-picks the first site after sitesQ resolves).
+    const toggle = await screen.findByTestId("catalog-firing-toggle")
+    await waitFor(() => {
+      expect(toggle.getAttribute("data-state")).toBe("checked")
+    })
+
+    // Wait for the firing-count badge on TITLE_MISSING to land. Once it's
+    // rendered every other row's count query has also resolved (they all
+    // resolve to 0 via the mock).
+    await waitFor(() => {
+      expect(screen.getByTestId("catalog-firing-TITLE_MISSING")).toBeTruthy()
+    })
+
+    // The zero-count row is hidden when the toggle is ON.
+    await waitFor(() => {
+      expect(screen.queryByTestId("catalog-entry-MISSING_ALT_TEXT")).toBeNull()
+    })
+    // The firing row is visible.
+    expect(screen.getByTestId("catalog-entry-TITLE_MISSING")).toBeTruthy()
+  })
+
+  it("reveals zero-count rows after toggling 'Show only firing' OFF", async () => {
+    getPublicCatalog.mockResolvedValue(SAMPLE_BE_CATALOG)
+    listSitesByTenant.mockResolvedValue([
+      { id: "s_1", url: "https://acme.example/", tenantId: "t_1" } as never,
+    ])
+    listCrawlsBySite.mockResolvedValue([])
+    listSiteAlerts.mockImplementation(
+      async (
+        _siteId: string,
+        opts: { type?: string },
+      ) => {
+        const total = opts.type === "TITLE_MISSING" ? 3 : 0
+        return { items: [], total, page: 0, size: 1 }
+      },
+    )
+
+    renderRoute()
+
+    // Wait for the default-ON state to settle (zero-count row hidden).
+    await waitFor(() => {
+      expect(screen.queryByTestId("catalog-entry-MISSING_ALT_TEXT")).toBeNull()
+      expect(screen.getByTestId("catalog-entry-TITLE_MISSING")).toBeTruthy()
+    })
+
+    // Toggle OFF.
+    const toggle = await screen.findByTestId("catalog-firing-toggle")
+    fireEvent.click(toggle)
+
+    // Zero-count row reappears.
+    await waitFor(() => {
+      expect(screen.getByTestId("catalog-entry-MISSING_ALT_TEXT")).toBeTruthy()
+    })
+    expect(screen.getByTestId("catalog-entry-TITLE_MISSING")).toBeTruthy()
+  })
 })

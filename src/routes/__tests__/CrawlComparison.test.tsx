@@ -120,9 +120,15 @@ describe("CrawlComparison", () => {
       new: [makeAlert("a1", "TITLE_MISSING")],
       resolved: [makeAlert("a2", "H1_MISSING")],
       persisted: [makeAlert("a3", "META_DESCRIPTION_MISSING")],
+      skipped: [],
+      newCount: 1,
+      resolvedCount: 1,
+      persistedCount: 1,
+      skippedCount: 0,
       newTruncated: false,
       resolvedTruncated: false,
       persistedTruncated: false,
+      skippedTruncated: false,
     }
     getCrawlDiff.mockResolvedValue(diff)
 

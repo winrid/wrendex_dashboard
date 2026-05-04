@@ -70,9 +70,15 @@ describe("RegressionStrip", () => {
       new: [makeAlert("a"), makeAlert("b")],
       resolved: [makeAlert("c")],
       persisted: [makeAlert("d"), makeAlert("e"), makeAlert("f")],
+      skipped: [],
+      newCount: 2,
+      resolvedCount: 1,
+      persistedCount: 3,
+      skippedCount: 0,
       newTruncated: false,
       resolvedTruncated: false,
       persistedTruncated: false,
+      skippedTruncated: false,
     }
     getCrawlDiff.mockResolvedValue(diff)
 
@@ -92,6 +98,78 @@ describe("RegressionStrip", () => {
     expect(screen.getByText("2")).toBeTruthy()
     expect(screen.getByText("1")).toBeTruthy()
     expect(screen.getByText("3")).toBeTruthy()
+  })
+
+  it("renders the true count when the array was capped but the count is higher", async () => {
+    // BE caps each array at DIFF_MAX (200) but ships the true total in the
+    // *Count fields. We render the count, not the array length.
+    const diff: CrawlDiff = {
+      new: Array.from({ length: 200 }, (_, i) => makeAlert(`n_${i}`)),
+      resolved: [],
+      persisted: [],
+      skipped: [],
+      newCount: 982,
+      resolvedCount: 0,
+      persistedCount: 0,
+      skippedCount: 0,
+      newTruncated: true,
+      resolvedTruncated: false,
+      persistedTruncated: false,
+      skippedTruncated: false,
+    }
+    getCrawlDiff.mockResolvedValue(diff)
+
+    renderStrip("c_1")
+
+    await waitFor(() => {
+      expect(screen.getByText("982")).toBeTruthy()
+    })
+    expect(screen.getByText("+more")).toBeTruthy()
+  })
+
+  it("surfaces skipped alerts under the strip when present", async () => {
+    const diff: CrawlDiff = {
+      new: [],
+      resolved: [],
+      persisted: [],
+      skipped: [makeAlert("s1")],
+      newCount: 0,
+      resolvedCount: 0,
+      persistedCount: 0,
+      skippedCount: 952,
+      newTruncated: false,
+      resolvedTruncated: false,
+      persistedTruncated: false,
+      skippedTruncated: true,
+    }
+    getCrawlDiff.mockResolvedValue(diff)
+
+    renderStrip("c_1")
+
+    const skipped = await screen.findByTestId("regression-strip-skipped")
+    expect(skipped.textContent).toMatch(/952 alerts on URLs not re-tested/)
+  })
+
+  it("hides the skipped line when skippedCount is zero", async () => {
+    const diff: CrawlDiff = {
+      new: [makeAlert("a")],
+      resolved: [],
+      persisted: [],
+      skipped: [],
+      newCount: 1,
+      resolvedCount: 0,
+      persistedCount: 0,
+      skippedCount: 0,
+      newTruncated: false,
+      resolvedTruncated: false,
+      persistedTruncated: false,
+      skippedTruncated: false,
+    }
+    getCrawlDiff.mockResolvedValue(diff)
+
+    renderStrip("c_1")
+    await screen.findByText("New errors")
+    expect(screen.queryByTestId("regression-strip-skipped")).toBeNull()
   })
 
   it("renders nothing when there is no previous crawl", () => {

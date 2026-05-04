@@ -16,7 +16,7 @@
 // pointing at the picker.
 
 import { useEffect, useMemo, useState } from "react"
-import { Link, useNavigate, useParams } from "react-router-dom"
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useQueries, useQuery } from "@tanstack/react-query"
 import { useApiClient } from "@/api/useApiClient"
 import {
@@ -33,6 +33,7 @@ import type {
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge-fallback"
 import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
 import { siteDisplayName } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -53,6 +54,7 @@ export function Catalog() {
   const { tenantId = "default" } = useParams<{ tenantId: string }>()
   const client = useApiClient()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const [query, setQuery] = useState("")
   const [activeCategory, setActiveCategory] = useState<CategoryKey>("ALL")
@@ -60,6 +62,35 @@ export function Catalog() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
   // Forces a re-render once the BE catalog hydrates and ENTRIES update.
   const [hydratedAt, setHydratedAt] = useState(0)
+
+  // "Show only firing" toggle. The URL is the source of truth so a shared
+  // /catalog?firing=0 link disables the filter; absence of the param means
+  // "default", which is ON when a site is selected (firing-count badges
+  // are meaningful) and OFF otherwise.
+  const firingParam = searchParams.get("firing")
+  const showOnlyFiring = firingParam === null
+    ? Boolean(siteId)
+    : firingParam !== "0"
+  const setShowOnlyFiring = (next: boolean) => {
+    setSearchParams(
+      (prev) => {
+        const out = new URLSearchParams(prev)
+        if (next) {
+          // Only write the explicit ON value when the default would be OFF
+          // (no site selected). Otherwise stick with the URL-clean default.
+          if (siteId) out.delete("firing")
+          else out.set("firing", "1")
+        } else {
+          // Default-ON case: write firing=0 to flip it off. When the default
+          // is already OFF (no site), drop the param to keep the URL clean.
+          if (siteId) out.set("firing", "0")
+          else out.delete("firing")
+        }
+        return out
+      },
+      { replace: true },
+    )
+  }
 
   // Hydrate the in-memory catalog from the BE on mount. Errors are swallowed
   // by the hydrate helper - the static FE list keeps the page alive.
@@ -160,6 +191,30 @@ export function Catalog() {
     return out
   }, [countQueries, visibleTypes])
 
+  // Track whether each row's count query has resolved yet. We never hide a
+  // row whose count is still loading -- avoids flicker as queries land in
+  // sequence.
+  const settled = useMemo<Record<string, boolean>>(() => {
+    const out: Record<string, boolean> = {}
+    countQueries.forEach((q, i) => {
+      const t = visibleTypes[i]
+      if (!t) return
+      if (q.isSuccess || q.isError) out[t] = true
+    })
+    return out
+  }, [countQueries, visibleTypes])
+
+  // What we actually render. When the toggle is ON we hide rows whose count
+  // query has settled with 0; rows still loading stay visible. When OFF we
+  // render filteredEntries unchanged.
+  const displayEntries = useMemo<readonly CheckCatalogEntry[]>(() => {
+    if (!showOnlyFiring || !siteId) return filteredEntries
+    return filteredEntries.filter((entry) => {
+      if (!settled[entry.type]) return true
+      return (totals[entry.type] ?? 0) > 0
+    })
+  }, [filteredEntries, showOnlyFiring, siteId, settled, totals])
+
   const sites = sitesQ.data ?? []
   const showSitePicker = sites.length > 0
 
@@ -207,14 +262,33 @@ export function Catalog() {
         ) : null}
       </div>
 
-      <Input
-        type="search"
-        placeholder="Search checks..."
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        className="max-w-md"
-        aria-label="Search catalog"
-      />
+      <div className="flex flex-wrap items-center gap-3">
+        <Input
+          type="search"
+          placeholder="Search checks..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="max-w-md"
+          aria-label="Search catalog"
+        />
+        <label className="flex items-center gap-2 text-sm">
+          <Switch
+            checked={showOnlyFiring}
+            onCheckedChange={setShowOnlyFiring}
+            disabled={!siteId}
+            aria-label="Show only firing"
+            data-testid="catalog-firing-toggle"
+          />
+          <span
+            className={cn(
+              "select-none",
+              !siteId ? "text-muted-foreground" : undefined,
+            )}
+          >
+            Show only firing
+          </span>
+        </label>
+      </div>
 
       {!siteId ? (
         <div
@@ -262,13 +336,15 @@ export function Catalog() {
         </aside>
 
         <div data-testid="catalog-entries">
-          {filteredEntries.length === 0 ? (
+          {displayEntries.length === 0 ? (
             <div className="rounded-md border bg-card p-8 text-center text-sm text-muted-foreground">
-              No checks match your search.
+              {showOnlyFiring && siteId && filteredEntries.length > 0
+                ? "No firing alerts on this site for the current filters."
+                : "No checks match your search."}
             </div>
           ) : (
             <ul className="divide-y rounded-md border bg-card">
-              {filteredEntries.map((entry) => {
+              {displayEntries.map((entry) => {
                 const isOpen = expanded[entry.type] === true
                 const firing = totals[entry.type]
                 return (

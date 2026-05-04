@@ -50,29 +50,46 @@ export function RegressionStrip({
   }
   const diff = diffQ.data
 
+  // Render the strip with the TRUE counts shipped by the BE (newCount /
+  // resolvedCount / persistedCount). The arrays themselves are capped at
+  // DIFF_MAX=200 for memory but the *Count fields hold the real total. The
+  // *Truncated flag still drives the "+more" indicator and only fires when
+  // the cap was actually exceeded.
+  const skippedCount = diff.skippedCount ?? 0
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-      <Tile
-        tone="error"
-        label="New errors"
-        count={diff.new.length}
-        truncated={diff.newTruncated}
-        to={inboxLink(tenantId, siteId, crawlId, "OPEN")}
-      />
-      <Tile
-        tone="success"
-        label="Resolved"
-        count={diff.resolved.length}
-        truncated={diff.resolvedTruncated}
-        to={inboxLink(tenantId, siteId, previousCrawlId, "RESOLVED")}
-      />
-      <Tile
-        tone="muted"
-        label="Persisted"
-        count={diff.persisted.length}
-        truncated={diff.persistedTruncated}
-        to={inboxLink(tenantId, siteId, crawlId, "OPEN")}
-      />
+    <div className="space-y-2">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <Tile
+          tone="error"
+          label="New errors"
+          count={diff.newCount}
+          truncated={diff.newTruncated}
+          to={inboxLink(tenantId, siteId, crawlId, "OPEN")}
+        />
+        <Tile
+          tone="success"
+          label="Resolved"
+          count={diff.resolvedCount}
+          truncated={diff.resolvedTruncated}
+          to={inboxLink(tenantId, siteId, previousCrawlId, "RESOLVED")}
+        />
+        <Tile
+          tone="muted"
+          label="Persisted"
+          count={diff.persistedCount}
+          truncated={diff.persistedTruncated}
+          to={inboxLink(tenantId, siteId, crawlId, "OPEN")}
+        />
+      </div>
+      {skippedCount > 0 ? (
+        <p
+          className="text-xs text-muted-foreground"
+          data-testid="regression-strip-skipped"
+        >
+          {skippedCount.toLocaleString()} alert
+          {skippedCount === 1 ? "" : "s"} on URLs not re-tested in this crawl
+        </p>
+      ) : null}
     </div>
   )
 }
