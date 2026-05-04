@@ -125,6 +125,22 @@ export function SiteDetail() {
     },
   })
 
+  // Pause / resume monitoring: flips Site.cadence between PAUSED and DAILY
+  // via PUT /api/sites/{siteId}/schedule. Default-resume picks DAILY because
+  // it's the gentlest non-paused cadence the BE understands; the user can
+  // refine to HOURLY / CONTINUOUS later from SiteSettings.
+  const scheduleMut = useMutation({
+    mutationFn: (cadence: "PAUSED" | "DAILY") =>
+      client.updateSchedule(siteId, { cadence }),
+    onSuccess: (_, cadence) => {
+      void queryClient.invalidateQueries({ queryKey: ["site", tenantId, siteId] })
+      toast.success(
+        cadence === "PAUSED" ? "Monitoring paused" : "Monitoring resumed",
+      )
+    },
+    onError: () => toast.error("Could not update monitoring schedule"),
+  })
+
   const onCrawlComplete = () => {
     setRunningCrawlId(null)
     void queryClient.invalidateQueries({ queryKey: ["site-runs", siteId] })
@@ -229,12 +245,19 @@ export function SiteDetail() {
               <Button
                 size="sm"
                 variant="outline"
+                disabled={scheduleMut.isPending}
                 onClick={() =>
-                  toast.info("Pause monitoring lands with the schedule editor")
+                  scheduleMut.mutate(
+                    site.cadence === "PAUSED" ? "DAILY" : "PAUSED",
+                  )
                 }
               >
                 <PauseIcon />
-                <span>Pause monitoring</span>
+                <span>
+                  {site.cadence === "PAUSED"
+                    ? "Resume monitoring"
+                    : "Pause monitoring"}
+                </span>
               </Button>
               <Button asChild variant="outline" size="sm">
                 <Link to={`/t/${tenantId}/sites/${siteId}/crawls`}>
