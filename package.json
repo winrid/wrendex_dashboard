@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "codegen": "node scripts/codegen.mjs",
-    "codegen:check": "node scripts/check-codegen-drift.mjs"
+    "codegen:check": "node scripts/check-codegen-drift.mjs",
+    "check": "pnpm tsc -b && pnpm test && pnpm codegen:check"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.8",
