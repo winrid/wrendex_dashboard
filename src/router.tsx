@@ -160,6 +160,9 @@ const AcceptInvite = lazy(() =>
 const SharedView = lazy(() =>
   import("@/routes/SharedView").then((m) => ({ default: m.SharedView })),
 )
+const NotFound = lazy(() =>
+  import("@/routes/NotFound").then((m) => ({ default: m.NotFound })),
+)
 
 // Public-route layout: every public element is a lazy chunk, so wrap them in a
 // shared <Suspense> via an Outlet shell. Authenticated routes get their own
@@ -229,6 +232,10 @@ export const router = createBrowserRouter([
           </RequireAuth>
         ),
       },
+      // Catch-all for any unmatched top-level URL. Mounted under the public
+      // layout so anonymous visitors hitting a stale link get a real 404 page
+      // with a "Back home" CTA instead of React Router's default error text.
+      { path: "*", element: <NotFound /> },
     ],
   },
   {
@@ -297,6 +304,11 @@ export const router = createBrowserRouter([
       { path: "team", element: <Team /> },
       { path: "billing", element: <Billing /> },
       { path: "settings", element: <Settings /> },
+      // Catch-all under AppShell: any unmatched /t/:tenantId/... URL renders
+      // 404 inside the shell so the sidebar, search bar, and tenant nav stay
+      // visible. NotFound reads useParams to surface a "Back to your sites"
+      // link pinned to the current tenant.
+      { path: "*", element: <NotFound /> },
     ],
   },
 ])
