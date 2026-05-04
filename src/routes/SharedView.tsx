@@ -170,9 +170,10 @@ function SiteSharedView({
   payload: SharedLinkPayload
 }) {
   const site = payload.site
-  if (!site) {
-    return <EmptyPayload reason="The share is missing site data." />
-  }
+  // Hooks must run in the same order on every render -- compute the memo
+  // BEFORE any early return. The previous order called useMemo only when
+  // site was present, which violates rules-of-hooks and would crash the
+  // component if the share's site data flickered between two renders.
   const sortedHealth = useMemo(() => {
     const points = payload.healthScore ?? []
     if (points.length === 0) return { latest: null, previous: null }
@@ -185,6 +186,9 @@ function SiteSharedView({
       previous: sorted.length >= 2 ? sorted[sorted.length - 2]! : null,
     }
   }, [payload.healthScore])
+  if (!site) {
+    return <EmptyPayload reason="The share is missing site data." />
+  }
 
   const ringScore = sortedHealth.latest?.healthScore ?? 0
   const ringDelta =

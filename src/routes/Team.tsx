@@ -16,7 +16,7 @@
 // (sole source of truth). The InviteMemberDialog is reused from the Members
 // and Invites tabs.
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { type ColumnDef } from "@tanstack/react-table"
@@ -399,8 +399,10 @@ function ChangeRoleDialog({
 }) {
   const [role, setRole] = useState<Role>("EDITOR")
   // Sync local state to the incoming member so opening the dialog for a
-  // second row starts from that row's current role.
-  useMemo(() => {
+  // second row starts from that row's current role. useEffect is the right
+  // home for "mirror prop into state" -- the previous useMemo() form was a
+  // setState-in-render bug (useMemo runs synchronously during render).
+  useEffect(() => {
     if (member && ASSIGNABLE_ROLES.includes(member.role)) {
       setRole(member.role)
     } else if (member) {

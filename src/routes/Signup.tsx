@@ -157,6 +157,10 @@ export function Signup() {
   // Funnel telemetry: signup_started fires once on mount when the user is
   // arriving from the anonymous funnel (claimToken present). Plan sec 16.
   const fireRef = useRef(false)
+  // Hooks must run in the same order on every render -- pendingTenantIdRef
+  // used to be declared AFTER the early-return below, so the second render
+  // where the user becomes authed would skip it and React would throw.
+  const pendingTenantIdRef = useRef<string | undefined>(undefined)
   useEffect(() => {
     if (fireRef.current) return
     if (!claimToken) return
@@ -186,8 +190,6 @@ export function Signup() {
       },
     ])
   }
-
-  const pendingTenantIdRef = useRef<string | undefined>(undefined)
 
   // Trial-start: now uses real Stripe Elements + SetupIntent. After the user
   // confirms the card with Stripe, we kick off a checkout session that
