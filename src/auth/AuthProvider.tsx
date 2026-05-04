@@ -221,26 +221,25 @@ export function AuthProvider({ children, skipBootstrap = false }: AuthProviderPr
       return
     }
     setAuthToken(stored)
-    let cancelled = false
     void (async () => {
       try {
         const me = await client.getMe()
-        if (cancelled) return
         applyMe(me)
       } catch (e) {
-        if (cancelled) return
         if (e instanceof ApiError && e.status === 401) {
           clearSession()
         }
         // Other errors: leave the token in place; the network may be flaky
         // and the next authenticated call will retry.
       } finally {
-        if (!cancelled) setIsLoading(false)
+        setIsLoading(false)
       }
     })()
-    return () => {
-      cancelled = true
-    }
+    // No cleanup: didBootstrap.current already prevents the StrictMode-dev
+    // double-mount from firing a second /api/me. If we set cancelled=true
+    // in cleanup, the first mount's promise resolves after the cleanup, sees
+    // cancelled, and skips both applyMe and setIsLoading(false), leaving the
+    // app stuck on RequireAuth's loading skeleton forever.
   }, [applyMe, clearSession, client, skipBootstrap])
 
   const signup = useCallback(
