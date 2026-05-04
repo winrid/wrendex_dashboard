@@ -10,7 +10,12 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# Vite-style local-only file conventions. *.local matches bare ".local"
+# files; the .local.* / vite.local.* patterns catch the developer overlay
+# configs (e.g. vite.local.ts) that should never ship.
 *.local
+*.local.*
+vite.local.*
 
 # Env files
 .env
