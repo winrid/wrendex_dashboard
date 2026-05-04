@@ -104,11 +104,15 @@ export function LinkExplorer() {
     enabled: Boolean(crawlId),
   })
 
-  const allRows = linksQ.data?.links ?? []
   const total = linksQ.data?.total ?? 0
 
+  // The fallback `allRows = linksQ.data?.links ?? []` used to live at the
+  // top of render and feed into this useMemo's dep array. That makes the
+  // empty-array fallback a fresh [] each render, so useMemo re-ran every
+  // time -- defeating the memoization on a hot list. Hoisted into the
+  // memo body, dep on the stable linksQ.data reference instead.
   const filteredRows = useMemo<LinkEntry[]>(() => {
-    let rows = allRows
+    let rows = linksQ.data?.links ?? []
     if (relFilter === "nofollow") {
       rows = rows.filter((r) => r.nofollow)
     }
@@ -127,7 +131,7 @@ export function LinkExplorer() {
       )
     }
     return rows
-  }, [allRows, relFilter, search, sorting])
+  }, [linksQ.data, relFilter, search, sorting])
 
   const columns = useMemo<ColumnDef<LinkEntry>[]>(
     () => [

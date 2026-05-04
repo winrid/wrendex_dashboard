@@ -98,15 +98,17 @@ export function CommandPalette() {
   // The typed client returns SearchResponse; older test mocks may still
   // resolve to a bare SearchResult[] array. Normalise both shapes so this
   // component owns no test-only branches.
+  //
+  // The items_ + truncated locals were previously evaluated at the top of
+  // render and fed as deps into the grouped useMemo. That makes the dep
+  // array a fresh literal/array each render, so useMemo re-runs every
+  // time -- defeating the memoization. Hoisted both into the memo body
+  // and depend on the stable searchData reference instead.
   const searchData = searchQ.data
-  const items_ = Array.isArray(searchData)
-    ? (searchData as SearchResult[])
-    : searchData?.items ?? []
-  const truncated = Array.isArray(searchData)
-    ? false
-    : Boolean(searchData?.truncated)
-
   const grouped = useMemo(() => {
+    const items_: SearchResult[] = Array.isArray(searchData)
+      ? (searchData as SearchResult[])
+      : searchData?.items ?? []
     const out: Record<SearchResultKind, SearchResult[]> = {
       site: [],
       page: [],
@@ -118,7 +120,10 @@ export function CommandPalette() {
       if (kind) out[kind].push(r)
     }
     return out
-  }, [items_])
+  }, [searchData])
+  const truncated = Array.isArray(searchData)
+    ? false
+    : Boolean(searchData?.truncated)
 
   const hasQuery = debouncedQuery.length > 0
   const hasAnyResult =

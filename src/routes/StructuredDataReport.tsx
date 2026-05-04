@@ -315,7 +315,11 @@ export function StructuredDataReport() {
     [alertsQ.data],
   )
 
-  const entries = sdQ.data?.entries ?? []
+  // Wrap the fallback in its own useMemo so the `entries` reference is
+  // stable per query response. The previous bare `?? []` produced a fresh
+  // [] each render, which thrashed the `filtered` memo below; entries
+  // is also read at the empty-state branch so we can't just hoist it in.
+  const entries = useMemo(() => sdQ.data?.entries ?? [], [sdQ.data])
 
   const filtered = useMemo(() => {
     return entries.filter((e) => {

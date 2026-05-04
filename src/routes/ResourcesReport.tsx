@@ -103,15 +103,18 @@ export function ResourcesReport() {
     enabled: Boolean(crawlId),
   })
 
-  const allResources = resourcesQ.data?.resources ?? []
+  // Hoisted resourcesQ.data?.resources ?? [] into the memo body; the
+  // top-of-render fallback was a fresh [] each render, defeating the
+  // useMemo. Dep on the stable query data reference instead.
   const filtered = useMemo<ResourceEntry[]>(() => {
+    const allResources = resourcesQ.data?.resources ?? []
     const rows = allResources.filter((r) => matchesTab(r, tab))
     return rows.sort((a, b) => {
       const sizeDelta = entrySize(b) - entrySize(a)
       if (sizeDelta !== 0) return sizeDelta
       return b.sourcePageCount - a.sourcePageCount
     })
-  }, [allResources, tab])
+  }, [resourcesQ.data, tab])
 
   const columns = useMemo<ColumnDef<ResourceEntry>[]>(
     () => [

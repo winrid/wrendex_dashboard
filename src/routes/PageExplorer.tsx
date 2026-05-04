@@ -177,11 +177,14 @@ export function PageExplorer() {
     enabled: Boolean(crawlId),
   })
 
-  const allRows = pagesQ.data?.pages ?? []
   const total = pagesQ.data?.total ?? 0
 
+  // pagesQ.data?.pages ?? [] used to live as `allRows` at the top of render
+  // and feed this useMemo's dep array. That makes the empty-array fallback
+  // a fresh [] each render, so useMemo re-ran every time. Hoisted into the
+  // memo body and dep on the stable pagesQ.data reference instead.
   const filteredRows = useMemo<PageRow[]>(() => {
-    let rows = allRows
+    let rows: PageRow[] = pagesQ.data?.pages ?? []
     if (statusCodes.length > 1) {
       const set = new Set(statusCodes)
       rows = rows.filter((p) => set.has(p.statusCode))
@@ -191,7 +194,7 @@ export function PageExplorer() {
       rows = rows.filter((p) => p.url.toLowerCase().includes(needle))
     }
     return rows
-  }, [allRows, statusCodes, urlContains])
+  }, [pagesQ.data, statusCodes, urlContains])
 
   const columns = useMemo<ColumnDef<PageRow>[]>(
     () => [
