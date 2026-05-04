@@ -1,4 +1,3 @@
-// Generated using typescript-generator version 3.2.1263 on 2026-05-03 14:03:48.
 
 export interface AcmeAccountKey {
     id: string;
