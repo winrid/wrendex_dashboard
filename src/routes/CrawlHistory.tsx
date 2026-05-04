@@ -182,7 +182,14 @@ export function CrawlHistory() {
       accessorKey: "errorCount",
       header: "Errors",
       cell: ({ row }) => (
-        <span className="tabular-nums text-red-600 dark:text-red-400">
+        <span
+          className={cn(
+            "tabular-nums",
+            row.original.errorCount > 0
+              ? "text-red-600 dark:text-red-400"
+              : "text-muted-foreground",
+          )}
+        >
           {row.original.errorCount}
         </span>
       ),
@@ -191,7 +198,14 @@ export function CrawlHistory() {
       accessorKey: "warningCount",
       header: "Warnings",
       cell: ({ row }) => (
-        <span className="tabular-nums text-amber-600 dark:text-amber-400">
+        <span
+          className={cn(
+            "tabular-nums",
+            row.original.warningCount > 0
+              ? "text-amber-600 dark:text-amber-400"
+              : "text-muted-foreground",
+          )}
+        >
           {row.original.warningCount}
         </span>
       ),
@@ -200,7 +214,14 @@ export function CrawlHistory() {
       accessorKey: "noticeCount",
       header: "Notices",
       cell: ({ row }) => (
-        <span className="tabular-nums text-blue-600 dark:text-blue-400">
+        <span
+          className={cn(
+            "tabular-nums",
+            row.original.noticeCount > 0
+              ? "text-blue-600 dark:text-blue-400"
+              : "text-muted-foreground",
+          )}
+        >
           {row.original.noticeCount}
         </span>
       ),

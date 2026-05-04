@@ -121,18 +121,25 @@ function Tile({
   truncated: boolean
   to: string
 }) {
+  // Zero is good news for "new errors" and neutral for "resolved" /
+  // "persisted". Downgrade the tile chrome to neutral when count === 0
+  // so the user doesn't see a red-tinted card with a big red 0 (which
+  // visually screams "bad" when the actual signal is "nothing changed").
+  const effectiveTone = count === 0 ? "muted" : tone
   const className =
-    tone === "error"
+    effectiveTone === "error"
       ? "border-red-500/30 bg-red-500/5"
-      : tone === "success"
+      : effectiveTone === "success"
         ? "border-emerald-500/30 bg-emerald-500/5"
         : "border-border bg-card"
   const accent =
-    tone === "error"
+    effectiveTone === "error"
       ? "text-red-700 dark:text-red-300"
-      : tone === "success"
+      : effectiveTone === "success"
         ? "text-emerald-700 dark:text-emerald-300"
-        : "text-foreground"
+        : count === 0
+          ? "text-muted-foreground"
+          : "text-foreground"
   return (
     <Link
       to={to}
