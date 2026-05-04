@@ -120,6 +120,18 @@ export function PageExplorer() {
   const [statusCodes, setStatusCodes] = useState<number[]>([])
   const [urlContains, setUrlContains] = useState("")
 
+  // Apply hoisted ABOVE the mount-effect so the function reference exists
+  // when the effect callback first runs. The previous order (effect at the
+  // top of the body, function declaration below) worked at runtime via
+  // function-decl hoisting but tripped React Compiler's "accessed before
+  // declared" check, which can't prove the closure is safe.
+  function applyPageExplorerFilter(next: PageExplorerFilter) {
+    setPagination({ pageIndex: next.pageIndex, pageSize: next.pageSize })
+    setSorting(next.sorting)
+    setStatusCodes(next.statusCodes)
+    setUrlContains(next.urlContains)
+  }
+
   // Sidebar -> route handoff (saved-view group on AppShell). When the user
   // clicks a saved-view in the sidebar, the handoff stashes the filter in
   // sessionStorage; we read + apply it once on mount.
@@ -141,13 +153,6 @@ export function PageExplorer() {
     }),
     [pagination, sorting, statusCodes, urlContains],
   )
-
-  function applyPageExplorerFilter(next: PageExplorerFilter) {
-    setPagination({ pageIndex: next.pageIndex, pageSize: next.pageSize })
-    setSorting(next.sorting)
-    setStatusCodes(next.statusCodes)
-    setUrlContains(next.urlContains)
-  }
 
   const onApplySavedView = (raw: unknown) => {
     if (isPageExplorerFilter(raw)) {
