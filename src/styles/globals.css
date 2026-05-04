@@ -3,75 +3,106 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+  Wrendex dashboard palette. Mapped from the marketing site's brand tokens
+  (see wrendex_marketing/src/assets/css/styles.css) so a customer logging
+  into the dashboard sees the same cream / sage / forest family they saw on
+  the homepage instead of the generic shadcn neutral grays. Density,
+  spacing, and typography ramps are unchanged; this file only swaps the
+  token block. Both light and dark mode are defined below.
+*/
+
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.129 0.042 264.695);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.208 0.042 265.755);
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.968 0.007 247.896);
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417);
-  --accent: oklch(0.968 0.007 247.896);
-  --accent-foreground: oklch(0.208 0.042 265.755);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.704 0.04 256.788);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+  /* Brand reference values, kept side-by-side with the marketing tokens so
+     it's obvious where each shadcn slot is sourced from. */
+  --brand-cream: #FDFBF4;
+  --brand-cream-warm: #F8F5EA;
+  --brand-paper: #F2EEDE;
+  --brand-sage-whisper: #EEF2E8;
+  --brand-sage-light: #DCE5D0;
+  --brand-sage-rule: #C9D3B8;
+  --brand-sage: #8BA877;
+  --brand-moss: #5B7A4A;
+  --brand-forest: #2C4A1E;
+  --brand-deep-forest: #1A2E12;
+  --brand-leaf-bright: #7DB85E;
+  --brand-bark: #8B7355;
+  --brand-gold: #C4A35A;
+
+  --background: #FDFBF4;          /* cream */
+  --foreground: #1A2E12;          /* deep-forest */
+  --card: #FFFFFF;                /* slightly brighter than cream so cards lift off the page */
+  --card-foreground: #1A2E12;
+  --popover: #FFFFFF;
+  --popover-foreground: #1A2E12;
+  --primary: #2C4A1E;             /* forest */
+  --primary-foreground: #FDFBF4;  /* cream */
+  --secondary: #EEF2E8;           /* sage-whisper */
+  --secondary-foreground: #2C4A1E;
+  --muted: #F2EEDE;               /* paper */
+  --muted-foreground: #5C5E52;    /* text-soft */
+  --accent: #EEF2E8;              /* sage-whisper, same as secondary so hovers feel cohesive */
+  --accent-foreground: #2C4A1E;
+  --destructive: #9B2A2A;         /* err */
+  --destructive-foreground: #FDFBF4;
+  --border: #DCE5D0;              /* sage-light */
+  --input: #DCE5D0;
+  --ring: #5B7A4A;                /* moss */
+  /* Recharts and badges sample sequentially: a warm-natural sequence
+     instead of the default blue/purple shadcn defaults. */
+  --chart-1: #5B7A4A;             /* moss */
+  --chart-2: #8BA877;             /* sage */
+  --chart-3: #C4A35A;             /* gold */
+  --chart-4: #8B7355;             /* bark */
+  --chart-5: #7DB85E;             /* leaf-bright */
   --radius: 0.625rem;
-  --sidebar: oklch(0.984 0.003 247.858);
-  --sidebar-foreground: oklch(0.129 0.042 264.695);
-  --sidebar-primary: oklch(0.208 0.042 265.755);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.968 0.007 247.896);
-  --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
-  --sidebar-border: oklch(0.929 0.013 255.508);
-  --sidebar-ring: oklch(0.704 0.04 256.788);
+  --sidebar: #F8F5EA;             /* cream-warm so the sidebar reads as a paper panel */
+  --sidebar-foreground: #1A2E12;
+  --sidebar-primary: #2C4A1E;
+  --sidebar-primary-foreground: #FDFBF4;
+  --sidebar-accent: #EEF2E8;      /* sage-whisper hover */
+  --sidebar-accent-foreground: #2C4A1E;
+  --sidebar-border: #DCE5D0;
+  --sidebar-ring: #5B7A4A;
 }
 
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.208 0.042 265.755);
-  --sidebar-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.279 0.041 260.031);
-  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.551 0.027 264.364);
+  /* Marketing has no dark mode; this is a coherent inversion of the same
+     family. Background slides to deep-forest, text to cream, and the
+     brighter leaf-bright tone takes over as the primary accent so the
+     forest tone has enough contrast against the dark surface. */
+  --background: #141A0E;          /* slightly darker than deep-forest for the canvas */
+  --foreground: #EEF2E8;          /* sage-whisper for body text */
+  --card: #1A2E12;                /* deep-forest */
+  --card-foreground: #EEF2E8;
+  --popover: #1A2E12;
+  --popover-foreground: #EEF2E8;
+  --primary: #7DB85E;             /* leaf-bright, the accent that pops on dark forest */
+  --primary-foreground: #141A0E;
+  --secondary: #2C4A1E;           /* forest */
+  --secondary-foreground: #EEF2E8;
+  --muted: #233A18;               /* between deep-forest and forest */
+  --muted-foreground: #8A8D7E;    /* text-faint */
+  --accent: #2C4A1E;
+  --accent-foreground: #EEF2E8;
+  --destructive: #C25555;         /* err lifted for dark contrast */
+  --destructive-foreground: #FDFBF4;
+  --border: rgba(220, 229, 208, 0.12); /* sage-light at low alpha */
+  --input: rgba(220, 229, 208, 0.16);
+  --ring: #7DB85E;
+  --chart-1: #7DB85E;             /* leaf-bright */
+  --chart-2: #8BA877;             /* sage */
+  --chart-3: #C4A35A;             /* gold */
+  --chart-4: #B09A7A;             /* bark-light, more legible than bark on dark */
+  --chart-5: #5B7A4A;             /* moss */
+  --sidebar: #1A2E12;             /* deep-forest panel */
+  --sidebar-foreground: #EEF2E8;
+  --sidebar-primary: #7DB85E;
+  --sidebar-primary-foreground: #141A0E;
+  --sidebar-accent: #2C4A1E;
+  --sidebar-accent-foreground: #EEF2E8;
+  --sidebar-border: rgba(220, 229, 208, 0.12);
+  --sidebar-ring: #7DB85E;
 }
 
 @theme inline {

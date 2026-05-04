@@ -56,6 +56,7 @@ import { NotificationBell } from "./NotificationBell"
 import { CommandPalette } from "./CommandPalette"
 import { getNavItems } from "./nav-items"
 import { useAuth } from "@/auth/AuthProvider"
+import { WrenMark } from "@/components/brand/WrenMark"
 
 function SidebarNav() {
   const location = useLocation()
@@ -301,10 +302,12 @@ export function AppShell() {
               />
             ) : (
               <>
-                <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground text-sm font-bold">
-                  W
+                <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                  <WrenMark className="size-4" />
                 </div>
-                <span className="text-base font-semibold">Wrendex</span>
+                <span className="text-base font-semibold tracking-tight">
+                  Wrendex
+                </span>
               </>
             )}
           </Link>

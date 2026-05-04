@@ -29,6 +29,7 @@ import { VerificationDialog } from "@/components/site-verification/VerificationD
 import { Plus } from "lucide-react"
 import { relativeTime, siteDisplayName } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { WrenMark } from "@/components/brand/WrenMark"
 
 // Display row pulls health from a per-site crawl query so the column matches
 // what SiteDetail renders. Keep `Site` bound to the API contract; layer the
@@ -255,9 +256,25 @@ export function Sites() {
         data={rows}
         isLoading={sitesQ.isLoading}
         emptyState={
-          sitesQ.isError
-            ? "Could not load sites."
-            : "No sites yet. Click Add site to start monitoring one."
+          sitesQ.isError ? (
+            "Could not load sites."
+          ) : (
+            <div className="flex flex-col items-center gap-3 py-8 text-center">
+              <WrenMark className="size-16 text-muted-foreground/60" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-foreground">
+                  No sites yet.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Click Add site to start monitoring one.
+                </p>
+              </div>
+              <Button size="sm" onClick={() => setAddOpen(true)}>
+                <Plus />
+                <span>Add your first site</span>
+              </Button>
+            </div>
+          )
         }
       />
       <AddSiteDialog

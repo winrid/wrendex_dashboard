@@ -63,6 +63,7 @@ import { CsvExportButton } from "@/components/csv/CsvExportButton"
 import { SavedViewMenu } from "@/components/saved-views/SavedViewMenu"
 import { consumePendingSavedView } from "@/components/saved-views/handoff"
 import { siteDisplayName } from "@/lib/format"
+import { WrenMark } from "@/components/brand/WrenMark"
 
 type TabKey = "open" | "snoozed" | "resolved"
 
@@ -488,8 +489,11 @@ export function Inbox() {
     }
     if (sites.length === 0) {
       return (
-        <div className="rounded-md border bg-card p-8 text-center text-sm text-muted-foreground">
-          No sites yet. Add a site to start receiving alerts.
+        <div className="flex flex-col items-center gap-3 rounded-md border bg-card p-10 text-center">
+          <WrenMark className="size-16 text-muted-foreground/60" />
+          <p className="text-sm text-muted-foreground">
+            No sites yet. Add a site to start receiving alerts.
+          </p>
         </div>
       )
     }

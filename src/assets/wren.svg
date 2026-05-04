@@ -1,0 +1,14 @@
+<!--
+  Wrendex wren mark. Single-color, uses currentColor so it inherits from the
+  surrounding text/icon color. Adapted to a 24x24 viewBox from the marketing
+  site's nav brand mark (wrendex_marketing/src/partials/navbar.ejs) so the
+  dashboard and the marketing site share the same silhouette: small body,
+  perked head, slightly upturned tail.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+  <ellipse cx="11.2" cy="13.6" rx="5.2" ry="4" fill="currentColor"/>
+  <circle cx="7" cy="10.4" r="2.8" fill="currentColor"/>
+  <path d="M15.2 12.4C16.4 10.4 18 7.6 17.4 4.8C16.6 6.4 16 8 15.2 10C14.8 11 14.8 11.8 15.2 12.4Z" fill="currentColor"/>
+  <path d="M4.2 10L2 9.4L4.2 8.8" stroke="currentColor" stroke-width="0.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M9 19.2L8.4 21.4M11.4 19.4L11.4 21.6M13.6 19.2L14.2 21.4" stroke="currentColor" stroke-width="0.7" stroke-linecap="round"/>
+</svg>
