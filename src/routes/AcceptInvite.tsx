@@ -51,15 +51,10 @@ export function AcceptInvite() {
 
   const inviteQ = useQuery<InvitePublicView | null>({
     queryKey: ["public-invite", token],
-    queryFn: async () => {
-      try {
-        return await client.getPublicInvite(token)
-      } catch (e) {
-        // Surface the ApiError directly so the render path can branch on
-        // status; react-query's error slot keeps the typed instance.
-        throw e
-      }
-    },
+    // ApiError is surfaced as-is via react-query's error slot so the render
+    // path below can branch on .status. No try/catch wrapper needed; promises
+    // already propagate the typed instance.
+    queryFn: () => client.getPublicInvite(token),
     enabled: token.length > 0,
     retry: (count, e) => {
       if (e instanceof ApiError && [404, 409, 410].includes(e.status)) {

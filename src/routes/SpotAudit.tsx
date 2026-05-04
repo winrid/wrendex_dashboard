@@ -62,7 +62,7 @@ function partitionUrls(urls: string[], expectedHost: string | null): UrlPartitio
   const invalid: string[] = []
   const offSite: string[] = []
   for (const u of urls) {
-    let parsed: URL | null = null
+    let parsed: URL
     try {
       parsed = new URL(u)
     } catch {

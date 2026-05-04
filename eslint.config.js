@@ -18,5 +18,23 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      // Allow leading-underscore argument and variable names to be unused.
+      // Standard TS convention for "intentionally unused"; the BE controllers
+      // sometimes have placeholder ctor params and tests sometimes use _ as
+      // a positional skip in destructuring. Lint should respect that signal.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        {
+          args: 'all',
+          argsIgnorePattern: '^_',
+          caughtErrors: 'all',
+          caughtErrorsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
+      ],
+    },
   },
 ])

@@ -130,7 +130,7 @@ function SavedViewsGroup() {
   })
 
   const onPick = async (v: SavedView) => {
-    let parsed: unknown = null
+    let parsed: unknown
     try {
       parsed = v.filterJson ? JSON.parse(v.filterJson) : null
     } catch {

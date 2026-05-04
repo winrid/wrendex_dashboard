@@ -156,7 +156,7 @@ export function SavedViewMenu({
   })
 
   const onPickSegment = (view: SavedView) => {
-    let parsed: unknown = null
+    let parsed: unknown
     try {
       parsed = view.filterJson ? JSON.parse(view.filterJson) : null
     } catch {
