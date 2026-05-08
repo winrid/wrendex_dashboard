@@ -260,7 +260,7 @@ export function Sites() {
             "Could not load sites."
           ) : (
             <div className="flex flex-col items-center gap-3 py-8 text-center">
-              <WrenMark className="size-16 text-muted-foreground/60" />
+              <WrenMark className="size-16 opacity-60" />
               <div className="space-y-1">
                 <p className="text-sm font-medium text-foreground">
                   No sites yet.

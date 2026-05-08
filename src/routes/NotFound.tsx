@@ -16,7 +16,7 @@ export function NotFound() {
   const home = tenantId ? `/t/${tenantId}/sites` : "/"
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-6 text-center">
-      <WrenMark className="size-16 text-muted-foreground/60" />
+      <WrenMark className="size-16 opacity-60" />
       <div className="space-y-1">
         <p className="text-sm font-medium text-muted-foreground">404</p>
         <h1 className="text-xl font-semibold tracking-tight">

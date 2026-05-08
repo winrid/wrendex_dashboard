@@ -57,6 +57,7 @@ import { CommandPalette } from "./CommandPalette"
 import { getNavItems } from "./nav-items"
 import { useAuth } from "@/auth/AuthProvider"
 import { WrenMark } from "@/components/brand/WrenMark"
+import wrenBgUrl from "@/assets/wren-bg.png"
 
 function SidebarNav() {
   const location = useLocation()
@@ -302,8 +303,8 @@ export function AppShell() {
               />
             ) : (
               <>
-                <div className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
-                  <WrenMark className="size-4" />
+                <div className="flex size-7 items-center justify-center rounded-md text-primary-foreground">
+                  <WrenMark className="size-5" />
                 </div>
                 <span className="text-base font-semibold tracking-tight">
                   Wrendex
@@ -350,7 +351,10 @@ export function AppShell() {
             <UserMenu />
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-6">
+        <main
+          className="wren-bg flex-1 overflow-y-auto p-6"
+          style={{ ["--wren-bg-url" as string]: `url(${wrenBgUrl})` }}
+        >
           {/* P5 iter 1 FE-A: every route under AppShell is React.lazy(), so
               wrap the nested <Outlet /> in <Suspense> so navigations show a
               skeleton while the destination chunk loads. The shell + sidebar

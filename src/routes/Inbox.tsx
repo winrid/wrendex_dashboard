@@ -490,7 +490,7 @@ export function Inbox() {
     if (sites.length === 0) {
       return (
         <div className="flex flex-col items-center gap-3 rounded-md border bg-card p-10 text-center">
-          <WrenMark className="size-16 text-muted-foreground/60" />
+          <WrenMark className="size-16 opacity-60" />
           <p className="text-sm text-muted-foreground">
             No sites yet. Add a site to start receiving alerts.
           </p>

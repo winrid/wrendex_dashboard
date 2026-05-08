@@ -154,3 +154,72 @@
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   }
 }
+
+/*
+  Pixelized dissolving-wren watermark anchored to the right of the dashboard
+  main content. The image URL is injected via the --wren-bg-url custom
+  property on <main> so we can swap it without touching CSS. `isolation: isolate`
+  contains the negative z-index of the pseudo-element within <main>.
+*/
+.wren-bg {
+  position: relative;
+  isolation: isolate;
+}
+.wren-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--wren-bg-url);
+  background-repeat: no-repeat;
+  background-position: right 0.1em bottom 0.1em;
+  background-size: clamp(320px, 36vw, 560px);
+  opacity: 0.25;
+  pointer-events: none;
+  z-index: -1;
+}
+.dark .wren-bg::before {
+  opacity: 0.25;
+}
+
+/*
+  Inside the dashboard main content area, surface tokens (card, muted,
+  secondary, accent, background-as-control) render at 50% alpha so the
+  dissolving-wren watermark underneath shows through. Sidebar, topbar,
+  popovers, dropdowns sit OUTSIDE .wren-bg in the DOM and remain fully
+  opaque for readability. Primary/destructive accents are intentionally
+  excluded so CTA buttons keep full contrast.
+*/
+.wren-bg .bg-card {
+  background-color: color-mix(in srgb, var(--card) 50%, transparent);
+}
+.wren-bg .bg-background {
+  background-color: color-mix(in srgb, var(--background) 50%, transparent);
+}
+.wren-bg .bg-muted {
+  background-color: color-mix(in srgb, var(--muted) 50%, transparent);
+}
+.wren-bg .bg-secondary {
+  background-color: color-mix(in srgb, var(--secondary) 50%, transparent);
+}
+.wren-bg .bg-accent {
+  background-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+/*
+  Sidebar active item: shadcn's default uses --sidebar-accent (sage-whisper)
+  which is barely distinguishable from the cream-warm sidebar background, so
+  the user can't tell which page they're on. Bump active items to the
+  --sidebar-primary token (forest in light mode, leaf-bright in dark) so the
+  active route is unmistakable. Hover/focus on an already-active item keeps
+  the same fill instead of fading back to the accent token.
+*/
+[data-sidebar="menu-button"][data-active="true"],
+[data-sidebar="menu-button"][data-active="true"]:hover,
+[data-sidebar="menu-button"][data-active="true"]:focus-visible,
+[data-sidebar="menu-sub-button"][data-active="true"],
+[data-sidebar="menu-sub-button"][data-active="true"]:hover,
+[data-sidebar="menu-sub-button"][data-active="true"]:focus-visible {
+  background-color: var(--sidebar-primary) !important;
+  color: var(--sidebar-primary-foreground) !important;
+  font-weight: 600;
+}
