@@ -159,8 +159,14 @@ export function ShareButton({
 
   if (readOnly) return null
 
+  // Under the credit-based billing model share links are unlimited (the BE
+  // reports planLimit=Integer.MAX_VALUE as the sentinel). We hide the
+  // "X of Y share links used" footer and just show a usage count.
+  const SHARE_LINKS_UNLIMITED = 2_147_483_647
   const showPlanFooter =
-    created?.planLimit != null && created.planUsed != null
+    created?.planLimit != null
+    && created.planUsed != null
+    && created.planLimit < SHARE_LINKS_UNLIMITED
 
   return (
     <>

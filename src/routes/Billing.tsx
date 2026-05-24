@@ -1,26 +1,25 @@
-// Billing page (plan section 11). Reads the read-only BillingSnapshot,
-// surfaces three plan-tier cards (pricing copy lifted from the marketing
-// site sec.08), wires the Subscribe + Open billing portal CTAs through
-// createCheckoutSession + createPortalSession.
+// Billing page under the credit-based billing model. Renders the
+// credit-balance snapshot, the auto-top-up settings card, a manual-top-up
+// dialog, the Stripe billing portal link, and the invoice history table.
 //
-// Stripe never gets called from the FE directly; the BE creates the
-// Checkout Session and we redirect to the URL it returns. The "Open
-// billing portal" button stays disabled until the tenant has a Stripe
-// customer (BillingSnapshot.hasPaymentMethod). Invoice history is a
-// "Coming soon" stub - the BE doesn't expose an invoice list yet.
+// Stripe is never called from the FE directly; the BE creates the checkout /
+// portal / payment-intent and we redirect or relay the result. Credit balance
+// updates flow back via the Stripe webhook (payment_intent.succeeded /
+// invoice.paid), so the UI just polls the billing snapshot on focus.
 
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useParams } from "react-router-dom"
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { type ColumnDef } from "@tanstack/react-table"
 import { toast } from "sonner"
 import { useApiClient } from "@/api/useApiClient"
 import { useAuth } from "@/auth/AuthProvider"
 import type {
+  AutoTopUpSettings,
   BillingSnapshot,
+  CreditPackSku,
   Invoice,
   ListInvoicesResult,
-  Plan,
   SubscriptionStatus,
 } from "@/api/types"
 import { Button } from "@/components/ui/button"
@@ -34,113 +33,47 @@ import {
 } from "@/components/ui/card"
 import { DataTable } from "@/components/data-table/DataTable"
 import { Toaster } from "@/components/ui/sonner"
-import { CheckIcon, ExternalLinkIcon } from "lucide-react"
+import { ExternalLinkIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 // ---------------------------------------------------------------------------
-// Plan copy (lifted verbatim from /home/winrid/dev/wrendex/wrendex_marketing
-// /index_v2.html sec.08). Keep prices + bullets in lockstep with that page.
+// Pack catalog. The credit counts and prices mirror BillingConfig on the BE.
+// Keep these in lockstep with marketing-site pricing-calculator.js.
 // ---------------------------------------------------------------------------
 
-type PlanCard = {
-  tier: Plan
-  name: string
-  pitch: string
+type Pack = {
+  sku: CreditPackSku
+  credits: number
   price: string
-  period: string
-  note: string
-  bullets: string[]
-  featured?: boolean
+  perCreditCents: number
+  label: string
 }
 
-const PLAN_CARDS: PlanCard[] = [
-  {
-    tier: "STARTER",
-    name: "Starter",
-    pitch: "For one site. Solo operators, in-house SEOs.",
-    price: "$49",
-    period: "/month",
-    note: "$39/mo billed annually",
-    bullets: [
-      "1 site",
-      "Up to 5,000 pages per audit",
-      "Daily monitoring",
-      "Email alerts",
-      "30-day audit history",
-      "All 170+ checks, no add-ons",
-      "PDF and CSV export",
-    ],
-  },
-  {
-    tier: "PROFESSIONAL",
-    name: "Professional",
-    pitch: "For growing sites and marketing teams.",
-    price: "$199",
-    period: "/month",
-    note: "$159/mo billed annually",
-    featured: true,
-    bullets: [
-      "Up to 5 sites",
-      "Up to 50,000 pages per audit",
-      "Hourly monitoring and deploy triggers",
-      "Slack, email, and Teams alerts",
-      "1-year audit history and diffs",
-      "5 team seats included",
-      "Priority support",
-    ],
-  },
-  {
-    tier: "AGENCY",
-    name: "Agency",
-    pitch: "For teams auditing client sites at scale.",
-    price: "$599",
-    period: "/month",
-    note: "Custom pricing above 25 sites",
-    bullets: [
-      "25 sites, unlimited pages",
-      "Continuous monitoring",
-      "White-label client reports",
-      "PagerDuty and all alert channels",
-      "Unlimited history and audit diffs",
-      "Unlimited team seats",
-      "Dedicated CSM and onboarding",
-    ],
-  },
+const PACKS: Pack[] = [
+  { sku: "PACK_5K",   credits: 5_000,   price: "$4.99",  perCreditCents: 0.0998, label: "5,000 credits" },
+  { sku: "PACK_25K",  credits: 25_000,  price: "$19.99", perCreditCents: 0.0800, label: "25,000 credits" },
+  { sku: "PACK_100K", credits: 100_000, price: "$69.99", perCreditCents: 0.0700, label: "100,000 credits" },
 ]
+
+function packBySku(sku: CreditPackSku | null | undefined): Pack | null {
+  if (!sku) return null
+  return PACKS.find((p) => p.sku === sku) ?? null
+}
 
 function statusLabel(status: SubscriptionStatus): string {
   switch (status) {
-    case "TRIALING":
-      return "Trial"
-    case "ACTIVE":
-      return "Active"
-    case "PAST_DUE":
-      return "Past due"
-    case "CANCELLED":
-      return "Cancelled"
-    case "INCOMPLETE":
-      return "Incomplete"
+    case "TRIALING":   return "Trial"
+    case "ACTIVE":     return "Active"
+    case "PAST_DUE":   return "Past due"
+    case "CANCELLED":  return "Cancelled"
+    case "INCOMPLETE": return "Incomplete"
     case "NONE":
-    default:
-      return "No subscription"
+    default:           return "No subscription"
   }
 }
 
 function statusVariant(status: SubscriptionStatus): "default" | "outline" {
   return status === "ACTIVE" || status === "TRIALING" ? "default" : "outline"
-}
-
-function planLabel(plan: Plan): string {
-  switch (plan) {
-    case "STARTER":
-      return "Starter"
-    case "PROFESSIONAL":
-      return "Professional"
-    case "AGENCY":
-      return "Agency"
-    default:
-      return plan
-  }
 }
 
 function trialDaysRemaining(trialEndsAt: string | null): number | null {
@@ -152,23 +85,23 @@ function trialDaysRemaining(trialEndsAt: string | null): number | null {
   return Math.ceil((end - now) / (1000 * 60 * 60 * 24))
 }
 
-function formatTrialEnd(trialEndsAt: string | null): string {
-  if (!trialEndsAt) return ""
+function formatDate(value: string | null): string {
+  if (!value) return ""
   try {
-    const d = new Date(trialEndsAt)
-    return d.toLocaleDateString(undefined, {
+    return new Date(value).toLocaleDateString(undefined, {
       year: "numeric",
       month: "short",
       day: "numeric",
     })
   } catch {
-    return trialEndsAt
+    return value
   }
 }
 
-// Per-tenant localStorage key for the trial_active dedup. We migrate the
-// previous in-memory ref guard to localStorage so a refresh / navigation
-// out and back doesn't re-fire the event for the same tenant.
+function formatNumber(n: number): string {
+  return new Intl.NumberFormat(undefined).format(n)
+}
+
 const TRIAL_ACTIVE_FIRED_KEY_PREFIX = "wrendex.trialActiveFired."
 
 function trialActiveFiredKey(tenantId: string): string {
@@ -189,8 +122,7 @@ function markTrialActiveFired(tenantId: string): void {
   try {
     window.localStorage.setItem(trialActiveFiredKey(tenantId), "1")
   } catch {
-    // ignore quota / disabled storage; worst case the event re-fires
-    // once per surface visit.
+    // ignore quota / disabled storage
   }
 }
 
@@ -203,11 +135,11 @@ export function Billing() {
     queryKey: ["billing", tenantId],
     queryFn: () => client.getBilling(tenantId),
     enabled: Boolean(tenantId),
+    refetchOnWindowFocus: true,
   })
 
   // Funnel telemetry: trial_active fires once per (tenant, browser) when
-  // the snapshot shows TRIALING. The fire-state lives in localStorage so a
-  // refresh / nav-away-and-back doesn't re-fire the event.
+  // the snapshot shows TRIALING.
   useEffect(() => {
     const data = billingQ.data
     if (!data || data.subscriptionStatus !== "TRIALING") return
@@ -224,21 +156,6 @@ export function Billing() {
       },
     ])
   }, [billingQ.data, client, tenantId, auth.user?.id])
-
-  const checkoutMut = useMutation({
-    mutationFn: (priceTier: Plan) =>
-      client.createCheckoutSession(tenantId, {
-        priceTier,
-        returnUrl: window.location.origin + window.location.pathname,
-        trialDays: 14,
-      }),
-    onSuccess: (res) => {
-      window.location.href = res.url
-    },
-    onError: () => {
-      toast.error("Could not start checkout. Please try again.")
-    },
-  })
 
   const portalMut = useMutation({
     mutationFn: () =>
@@ -262,40 +179,29 @@ export function Billing() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Billing</h1>
         <p className="text-sm text-muted-foreground">
-          Manage your plan, payment method, and invoice history.
+          Wrendex grows with you. Pay $4.99/month for 5,000 crawl credits and
+          top up at any time as you scale.
         </p>
       </div>
 
-      {/* Plan snapshot */}
-      <PlanSnapshotCard
+      <CreditBalanceCard
         snapshot={data ?? null}
         loading={billingQ.isLoading}
         trialDays={trialDays}
       />
 
-      {/* Choose your plan */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Choose your plan</CardTitle>
-          <CardDescription>
-            Every plan includes the full 170+ checks. Cancel any time.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-3">
-            {PLAN_CARDS.map((p) => (
-              <PlanTierCard
-                key={p.tier}
-                plan={p}
-                onSubscribe={() => checkoutMut.mutate(p.tier)}
-                disabled={checkoutMut.isPending}
-              />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      <AutoTopUpCard
+        tenantId={tenantId}
+        snapshot={data ?? null}
+        loading={billingQ.isLoading}
+      />
 
-      {/* Manage subscription via Stripe portal */}
+      <ManualTopUpCard
+        tenantId={tenantId}
+        snapshot={data ?? null}
+        loading={billingQ.isLoading}
+      />
+
       <Card>
         <CardHeader>
           <CardTitle>Manage subscription</CardTitle>
@@ -320,22 +226,301 @@ export function Billing() {
         </CardContent>
       </Card>
 
-      {/* Invoices */}
       <InvoicesCard tenantId={tenantId} />
     </div>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Invoices list (plan section 11). Bound to listInvoices(tenantId, {limit}).
-// Renders the Stripe invoice rows in DataTable; empty state explains the
-// "trial -> first invoice" lifecycle.
+// Credit balance card -- the headline number, cycle window, and trial banner.
+// ---------------------------------------------------------------------------
+
+function CreditBalanceCard({
+  snapshot,
+  loading,
+  trialDays,
+}: {
+  snapshot: BillingSnapshot | null
+  loading: boolean
+  trialDays: number | null
+}) {
+  const balance = snapshot?.creditBalance ?? 0
+  const granted = snapshot?.creditsGrantedThisCycle ?? 0
+  const pct = granted > 0 ? Math.max(0, Math.min(100, (balance / granted) * 100)) : 0
+
+  return (
+    <Card data-testid="credit-balance-card">
+      <CardHeader>
+        <CardTitle>Credits</CardTitle>
+        <CardDescription>
+          1 credit = 1 page crawl. Real-browser rendering uses 2 credits per page.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        ) : !snapshot ? (
+          <p className="text-sm text-muted-foreground">
+            Could not load billing snapshot.
+          </p>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-baseline gap-3">
+              <div className="text-3xl font-semibold tabular-nums">
+                {formatNumber(balance)}
+              </div>
+              <div className="text-sm text-muted-foreground">
+                of {formatNumber(granted)} credits this cycle
+              </div>
+              <Badge variant={statusVariant(snapshot.subscriptionStatus)}>
+                {statusLabel(snapshot.subscriptionStatus)}
+              </Badge>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded bg-muted">
+              <div
+                className="h-full bg-primary"
+                style={{ width: `${pct}%` }}
+                data-testid="credit-balance-bar"
+              />
+            </div>
+            <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
+              {snapshot.cycleStartedAt ? (
+                <span>Cycle started {formatDate(snapshot.cycleStartedAt)}</span>
+              ) : null}
+              {snapshot.cycleEndsAt ? (
+                <span>Renews {formatDate(snapshot.cycleEndsAt)}</span>
+              ) : null}
+              {snapshot.subscriptionStatus === "TRIALING" && trialDays != null ? (
+                <span>
+                  Trial ends in {trialDays} {trialDays === 1 ? "day" : "days"}
+                </span>
+              ) : null}
+              <span>
+                Payment method: {snapshot.hasPaymentMethod ? "on file" : "not on file"}
+              </span>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Auto top-up card -- toggle + pack picker + threshold input.
+// ---------------------------------------------------------------------------
+
+function AutoTopUpCard({
+  tenantId,
+  snapshot,
+  loading,
+}: {
+  tenantId: string
+  snapshot: BillingSnapshot | null
+  loading: boolean
+}) {
+  const client = useApiClient()
+  const queryClient = useQueryClient()
+  const current: AutoTopUpSettings = snapshot?.autoTopUp ?? {
+    enabled: false,
+    packSku: "PACK_5K",
+    thresholdCredits: 1000,
+  }
+
+  const [enabled, setEnabled] = useState(current.enabled)
+  const [packSku, setPackSku] = useState<CreditPackSku>(
+    (current.packSku as CreditPackSku) || "PACK_5K",
+  )
+  const [threshold, setThreshold] = useState(current.thresholdCredits || 1000)
+
+  useEffect(() => {
+    setEnabled(current.enabled)
+    setPackSku((current.packSku as CreditPackSku) || "PACK_5K")
+    setThreshold(current.thresholdCredits || 1000)
+  }, [snapshot])
+
+  const saveMut = useMutation({
+    mutationFn: () =>
+      client.patchAutoTopUp(tenantId, {
+        enabled,
+        packSku,
+        thresholdCredits: threshold,
+      }),
+    onSuccess: () => {
+      toast.success("Auto top-up updated.")
+      void queryClient.invalidateQueries({ queryKey: ["billing", tenantId] })
+    },
+    onError: () => {
+      toast.error("Could not update auto top-up. Please try again.")
+    },
+  })
+
+  const disabled = loading || !snapshot?.hasPaymentMethod || saveMut.isPending
+
+  return (
+    <Card data-testid="auto-top-up-card">
+      <CardHeader>
+        <CardTitle>Auto top-up</CardTitle>
+        <CardDescription>
+          When credits drop below your threshold, we'll buy another pack on
+          your default payment method so crawls never pause.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(e) => setEnabled(e.target.checked)}
+              disabled={disabled}
+              className="size-4 rounded border"
+              data-testid="auto-top-up-enabled"
+            />
+            <span>Enable auto top-up</span>
+          </label>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="text-sm">
+              <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                Pack
+              </span>
+              <select
+                value={packSku}
+                onChange={(e) => setPackSku(e.target.value as CreditPackSku)}
+                disabled={disabled || !enabled}
+                className="mt-1 block w-full rounded border bg-background px-3 py-2 text-sm"
+                data-testid="auto-top-up-pack"
+              >
+                {PACKS.map((p) => (
+                  <option key={p.sku} value={p.sku}>
+                    {p.label} {p.price}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                Threshold (credits)
+              </span>
+              <input
+                type="number"
+                min={0}
+                max={100000}
+                step={100}
+                value={threshold}
+                onChange={(e) => setThreshold(Math.max(0, Number(e.target.value) || 0))}
+                disabled={disabled || !enabled}
+                className="mt-1 block w-full rounded border bg-background px-3 py-2 text-sm tabular-nums"
+                data-testid="auto-top-up-threshold"
+              />
+            </label>
+          </div>
+          {!snapshot?.hasPaymentMethod ? (
+            <p className="text-xs text-muted-foreground">
+              Add a payment method first to enable auto top-up.
+            </p>
+          ) : null}
+          <div>
+            <Button
+              type="button"
+              onClick={() => saveMut.mutate()}
+              disabled={disabled}
+              data-testid="auto-top-up-save"
+            >
+              {saveMut.isPending ? "Saving..." : "Save"}
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Manual top-up -- one-off pack purchase. Reuses the same Stripe off-session
+// charge path as auto top-up; credits are granted by the webhook.
+// ---------------------------------------------------------------------------
+
+function ManualTopUpCard({
+  tenantId,
+  snapshot,
+  loading,
+}: {
+  tenantId: string
+  snapshot: BillingSnapshot | null
+  loading: boolean
+}) {
+  const client = useApiClient()
+  const queryClient = useQueryClient()
+  const [packSku, setPackSku] = useState<CreditPackSku>("PACK_5K")
+  const disabled = loading || !snapshot?.hasPaymentMethod
+
+  const buyMut = useMutation({
+    mutationFn: () => client.manualTopUp(tenantId, { packSku }),
+    onSuccess: () => {
+      toast.success("Top-up charged. Credits will appear shortly.")
+      // Credits land via the webhook; poll the snapshot to reflect.
+      void queryClient.invalidateQueries({ queryKey: ["billing", tenantId] })
+    },
+    onError: () => {
+      toast.error("Top-up failed. Check your payment method and try again.")
+    },
+  })
+
+  return (
+    <Card data-testid="manual-top-up-card">
+      <CardHeader>
+        <CardTitle>Buy credits</CardTitle>
+        <CardDescription>
+          One-time pack. Charges your default payment method; credits are
+          added once Stripe confirms.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="text-sm">
+            <span className="text-xs uppercase tracking-wide text-muted-foreground">
+              Pack
+            </span>
+            <select
+              value={packSku}
+              onChange={(e) => setPackSku(e.target.value as CreditPackSku)}
+              disabled={disabled}
+              className="mt-1 block min-w-56 rounded border bg-background px-3 py-2 text-sm"
+              data-testid="manual-top-up-pack"
+            >
+              {PACKS.map((p) => (
+                <option key={p.sku} value={p.sku}>
+                  {p.label} {p.price}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Button
+            type="button"
+            onClick={() => buyMut.mutate()}
+            disabled={disabled || buyMut.isPending}
+            data-testid="manual-top-up-buy"
+          >
+            {buyMut.isPending ? "Charging..." : `Buy ${packBySku(packSku)?.label}`}
+          </Button>
+        </div>
+        {!snapshot?.hasPaymentMethod ? (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Add a payment method first to buy credits.
+          </p>
+        ) : null}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Invoices list -- unchanged from pre-credit-model. The credit-pack one-time
+// invoices show up here alongside the recurring base subscription invoices.
 // ---------------------------------------------------------------------------
 
 function formatAmount(amountCents: number, currency: string): string {
-  // Stripe amounts are in the smallest currency unit (cents for USD, etc.).
-  // Use Intl.NumberFormat for currency-aware grouping + symbol; fall back to
-  // a raw cents/100 string when the currency code isn't supported.
   try {
     return new Intl.NumberFormat(undefined, {
       style: "currency",
@@ -488,7 +673,8 @@ function InvoicesCard({ tenantId }: { tenantId: string }) {
       <CardHeader>
         <CardTitle>Invoices</CardTitle>
         <CardDescription>
-          Past Stripe invoices for this workspace.
+          Past Stripe invoices for this workspace, including credit-pack
+          top-ups.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -508,130 +694,5 @@ function InvoicesCard({ tenantId }: { tenantId: string }) {
         />
       </CardContent>
     </Card>
-  )
-}
-
-function PlanSnapshotCard({
-  snapshot,
-  loading,
-  trialDays,
-}: {
-  snapshot: BillingSnapshot | null
-  loading: boolean
-  trialDays: number | null
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Current plan</CardTitle>
-        <CardDescription>
-          A snapshot of your subscription state.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Loading...</p>
-        ) : !snapshot ? (
-          <p className="text-sm text-muted-foreground">
-            Could not load billing snapshot.
-          </p>
-        ) : (
-          <div className="flex flex-wrap items-center gap-3">
-            <div>
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                Plan
-              </div>
-              <div className="text-base font-medium">
-                {planLabel(snapshot.plan)}
-              </div>
-            </div>
-            <div>
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                Status
-              </div>
-              <Badge variant={statusVariant(snapshot.subscriptionStatus)}>
-                {statusLabel(snapshot.subscriptionStatus)}
-              </Badge>
-            </div>
-            {snapshot.subscriptionStatus === "TRIALING" && trialDays != null ? (
-              <div>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Trial
-                </div>
-                <div className="text-sm">
-                  Trial ends in {trialDays}{" "}
-                  {trialDays === 1 ? "day" : "days"}
-                  {snapshot.trialEndsAt
-                    ? `, on ${formatTrialEnd(snapshot.trialEndsAt)}`
-                    : ""}
-                </div>
-              </div>
-            ) : null}
-            <div>
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                Payment method
-              </div>
-              <div className="text-sm">
-                {snapshot.hasPaymentMethod ? "On file" : "Not on file"}
-              </div>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
-function PlanTierCard({
-  plan,
-  onSubscribe,
-  disabled,
-}: {
-  plan: PlanCard
-  onSubscribe: () => void
-  disabled: boolean
-}) {
-  return (
-    <div
-      className={cn(
-        "flex flex-col rounded-md border bg-card p-4",
-        plan.featured ? "border-primary ring-1 ring-primary/20" : "",
-      )}
-      data-testid={`plan-card-${plan.tier}`}
-    >
-      <div className="mb-2 flex items-baseline justify-between">
-        <h3 className="text-lg font-semibold">{plan.name}</h3>
-        {plan.featured ? (
-          <Badge variant="default">Most popular</Badge>
-        ) : null}
-      </div>
-      <p className="text-xs text-muted-foreground">{plan.pitch}</p>
-      <div className="mt-3 flex items-baseline gap-1">
-        <span className="text-2xl font-semibold tabular-nums">
-          {plan.price}
-        </span>
-        <span className="text-sm text-muted-foreground">{plan.period}</span>
-      </div>
-      <p className="mt-1 text-xs text-muted-foreground">{plan.note}</p>
-      <ul className="mt-4 space-y-2 text-sm">
-        {plan.bullets.map((b) => (
-          <li key={b} className="flex items-start gap-2">
-            <CheckIcon className="mt-0.5 size-3.5 shrink-0 text-primary" />
-            <span>{b}</span>
-          </li>
-        ))}
-      </ul>
-      <div className="mt-4 flex-1" />
-      <Button
-        type="button"
-        className="mt-4 w-full"
-        variant={plan.featured ? "default" : "outline"}
-        onClick={onSubscribe}
-        disabled={disabled}
-        data-testid={`subscribe-${plan.tier}`}
-      >
-        Subscribe
-      </Button>
-    </div>
   )
 }

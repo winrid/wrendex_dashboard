@@ -107,6 +107,9 @@ const Team = lazy(() =>
 const Billing = lazy(() =>
   import("@/routes/Billing").then((m) => ({ default: m.Billing })),
 )
+const CreditUsage = lazy(() =>
+  import("@/routes/CreditUsage").then((m) => ({ default: m.CreditUsage })),
+)
 const Settings = lazy(() =>
   import("@/routes/Settings").then((m) => ({ default: m.Settings })),
 )
@@ -303,6 +306,7 @@ export const router = createBrowserRouter([
       { path: "schedule", element: <Schedule /> },
       { path: "team", element: <Team /> },
       { path: "billing", element: <Billing /> },
+      { path: "usage", element: <CreditUsage /> },
       { path: "settings", element: <Settings /> },
       // Catch-all under AppShell: any unmatched /t/:tenantId/... URL renders
       // 404 inside the shell so the sidebar, search bar, and tenant nav stay

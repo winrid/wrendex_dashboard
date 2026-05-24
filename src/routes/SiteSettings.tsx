@@ -24,7 +24,6 @@ import type {
   AlertRuleTriggerOp,
   CustomAlertRuleParams,
   NotificationChannel,
-  Plan,
   Severity,
   SiteCadence,
   SiteSchedule,
@@ -105,7 +104,7 @@ const CADENCE_RANK: Record<SiteCadence, number> = {
   CONTINUOUS: 3,
 }
 
-function maxCadenceForPlan(plan: Plan | null | undefined): number {
+function maxCadenceForPlan(plan: string | null | undefined): number {
   switch (plan) {
     case "STARTER":
       return CADENCE_RANK.DAILY

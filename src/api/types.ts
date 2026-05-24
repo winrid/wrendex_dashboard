@@ -54,7 +54,6 @@ export type {
   AlertStatus,
   AlertType,
   ChangelogTag,
-  Plan,
   Role,
   Severity,
   SiteCadence,
@@ -91,6 +90,11 @@ export type SeverityFloor = GenSeverity
 /** Mirrors the four EmailChannelKind values the FE emits; the BE field is
  *  a free-form String at the model level. */
 export type EmailChannelKind = "MEMBERS" | "CUSTOM" | "BOTH"
+
+/** Plan marker on Tenant + BillingSnapshotResponse. The credit-based billing
+ *  model only uses "BASE" today; the legacy values are retained so legacy
+ *  rows (pre-migration) deserialize cleanly. */
+export type Plan = "BASE" | "STARTER" | "PROFESSIONAL" | "AGENCY"
 
 /** Site verification method. BE field is a free-form String. */
 export type SiteVerificationMethod = "DNS_TXT" | "META_TAG"
@@ -582,17 +586,27 @@ export type UpdateSiteInput = Partial<
 // snapshot is composed at request time from Tenant + Stripe state.
 // ---------------------------------------------------------------------------
 
-/** Read-only snapshot returned by GET /api/tenants/{tenantId}/billing. */
-export type BillingSnapshot = {
-  plan: import("./generated/wrendex-models").Plan
-  subscriptionStatus: import("./generated/wrendex-models").SubscriptionStatus
-  trialStartedAt: string | null
-  trialEndsAt: string | null
-  hasPaymentMethod: boolean
-}
+/** Pack SKUs for credit top-ups. Mirrors BillingConfig.PACK_SKU_* on the BE.
+ *  These are string-literal aliases of {@code AutoTopUpSettings.packSku} (a
+ *  free-form string in the generated wire shape). */
+export type CreditPackSku = "PACK_5K" | "PACK_25K" | "PACK_100K"
+
+/** Auto top-up settings re-exported from codegen so callers can keep the
+ *  short name. The wire shape lives in wrendex-models.ts. */
+export type AutoTopUpSettings = import("./generated/wrendex-models").AutoTopUpSettings
+
+/**
+ * Read-only snapshot returned by GET /api/tenants/{tenantId}/billing.
+ * Sourced from the codegen'd {@code BillingSnapshotResponse} POJO on the BE
+ * so adding fields stays a single-file backend change.
+ */
+export type BillingSnapshot = import("./generated/wrendex-models").BillingSnapshotResponse
+
+/** Per-crawl credit cost rollup returned by GET /api/crawls/{crawlId}/cost. */
+export type CrawlCostResponse = import("./generated/wrendex-models").CrawlCostResponse
 
 export type CreateCheckoutSessionInput = {
-  priceTier: import("./generated/wrendex-models").Plan
+  priceTier: Plan
   returnUrl: string
   trialDays?: number
 }
@@ -608,6 +622,46 @@ export type CreatePortalSessionInput = {
 
 export type CreatePortalSessionResponse = {
   url: string
+}
+
+export type PatchAutoTopUpInput = {
+  enabled: boolean
+  packSku: CreditPackSku
+  thresholdCredits: number
+}
+
+export type ManualTopUpInput = {
+  packSku: CreditPackSku
+}
+
+export type ManualTopUpResponse = {
+  paymentIntentId: string
+  status: string
+}
+
+export type CreditLedgerKind =
+  | "DEBIT_HTTP"
+  | "DEBIT_BROWSER"
+  | "DEBIT_CHANGE_DETECT"
+  | "GRANT_CYCLE"
+  | "GRANT_TOPUP"
+  | "GRANT_MIGRATION"
+  | "GRANT_REFUND"
+
+export type CreditLedgerRow = {
+  id: string | null
+  kind: CreditLedgerKind
+  amount: number
+  balanceAfter: number
+  crawlRunId: string | null
+  pageId: string | null
+  url: string | null
+  source: string | null
+  occurredAt: string | null
+}
+
+export type CreditLedgerResponse = {
+  items: CreditLedgerRow[]
 }
 
 // ---------------------------------------------------------------------------

@@ -21,8 +21,14 @@ import type {
   AuthLoginResponseFull,
   AuthSignupRequest,
   AuthSignupResponse,
+  AutoTopUpSettings,
   BillingSnapshot,
   BulkActionResponse,
+  CrawlCostResponse,
+  CreditLedgerResponse,
+  ManualTopUpInput,
+  ManualTopUpResponse,
+  PatchAutoTopUpInput,
   ChangelogEntry,
   ChangelogResult,
   ChangePasswordInput,
@@ -758,6 +764,58 @@ export function createApiClient(opts: CreateApiClientOptions) {
           limit: params.limit,
         },
       },
+    )
+  }
+
+  /** PATCH /api/tenants/{tenantId}/billing/auto-top-up. OWNER/ADMIN only. */
+  function patchAutoTopUp(
+    tenantId: string,
+    input: PatchAutoTopUpInput,
+  ): Promise<AutoTopUpSettings> {
+    return request<AutoTopUpSettings>(
+      "PATCH",
+      `/api/tenants/${tenantId}/billing/auto-top-up`,
+      { body: input },
+    )
+  }
+
+  /** POST /api/tenants/{tenantId}/billing/topup. OWNER/ADMIN. Triggers an
+   *  off-session Stripe charge for the selected pack; credits are granted
+   *  asynchronously by the payment_intent.succeeded webhook. */
+  function manualTopUp(
+    tenantId: string,
+    input: ManualTopUpInput,
+  ): Promise<ManualTopUpResponse> {
+    return request<ManualTopUpResponse>(
+      "POST",
+      `/api/tenants/${tenantId}/billing/topup`,
+      { body: input },
+    )
+  }
+
+  /** GET /api/tenants/{tenantId}/billing/credit-ledger?from=&to=&limit=. */
+  function listCreditLedger(
+    tenantId: string,
+    params: { from?: string; to?: string; limit?: number } = {},
+  ): Promise<CreditLedgerResponse> {
+    return request<CreditLedgerResponse>(
+      "GET",
+      `/api/tenants/${tenantId}/billing/credit-ledger`,
+      {
+        query: {
+          from: params.from,
+          to: params.to,
+          limit: params.limit,
+        },
+      },
+    )
+  }
+
+  /** GET /api/crawls/{crawlId}/cost. Per-crawl credit-cost rollup. */
+  function getCrawlCost(crawlId: string): Promise<CrawlCostResponse> {
+    return request<CrawlCostResponse>(
+      "GET",
+      `/api/crawls/${crawlId}/cost`,
     )
   }
 
@@ -1631,6 +1689,10 @@ export function createApiClient(opts: CreateApiClientOptions) {
     createCheckoutSession,
     createPortalSession,
     listInvoices,
+    patchAutoTopUp,
+    manualTopUp,
+    listCreditLedger,
+    getCrawlCost,
     // tenant branding (white-label, Agency only)
     getBranding,
     updateBranding,

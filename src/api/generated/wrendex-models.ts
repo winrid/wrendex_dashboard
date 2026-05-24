@@ -79,6 +79,26 @@ export interface AuditLogEntry {
     createdAt: DateAsString;
 }
 
+export interface AutoTopUpSettings {
+    enabled: boolean;
+    packSku: string;
+    thresholdCredits: number;
+}
+
+export interface BillingSnapshotResponse {
+    plan: string;
+    subscriptionStatus: SubscriptionStatus;
+    trialStartedAt: DateAsString;
+    trialEndsAt: DateAsString;
+    hasPaymentMethod: boolean;
+    creditBalance: number;
+    creditsGrantedThisCycle: number;
+    cycleStartedAt: DateAsString;
+    cycleEndsAt: DateAsString;
+    autoTopUp: AutoTopUpSettings;
+    topUpInFlight: boolean;
+}
+
 export interface ChangelogEntry {
     id: string;
     slug: string;
@@ -89,6 +109,13 @@ export interface ChangelogEntry {
     createdAt: DateAsString;
     updatedAt: DateAsString;
     createdByUserId: string;
+}
+
+export interface CrawlCostResponse {
+    httpCount: number;
+    browserCount: number;
+    changeDetectCount: number;
+    totalCredits: number;
 }
 
 export interface CrawlRun {
@@ -104,8 +131,22 @@ export interface CrawlRun {
     warningCount: number;
     noticeCount: number;
     errorMessage: string;
+    lastHeartbeatAt: DateAsString;
     origin: string;
     seedUrls: string[];
+}
+
+export interface CreditLedgerEntry {
+    id: string;
+    tenantId: string;
+    crawlRunId: string;
+    pageId: string;
+    url: string;
+    kind: Kind;
+    amount: number;
+    balanceAfter: number;
+    occurredAt: DateAsString;
+    source: string;
 }
 
 export interface EmailChannel {
@@ -156,6 +197,31 @@ export interface Link {
     defer: boolean;
 }
 
+export interface LinkEdge {
+    id: string;
+    siteId: string;
+    crawlRunId: string;
+    fromPageId: string;
+    fromUrl: string;
+    toUrl: string;
+    href: string;
+    anchorText: string;
+    context: string;
+    rel: string;
+    nofollow: boolean;
+    external: boolean;
+    loading: string;
+    width: string;
+    height: string;
+    media: string;
+    async: boolean;
+    defer: boolean;
+    targetStatusCode: number;
+    targetContentLength: number;
+    targetTimedOut: boolean;
+    targetFinalStatusCode: number;
+}
+
 export interface Page {
     id: string;
     siteId: string;
@@ -198,6 +264,50 @@ export interface Page {
     ampValidationErrors: string[];
     inlineScripts: string[];
     inlineStyles: string[];
+    etag: string;
+    lastModified: string;
+    xrobotsTag: string;
+}
+
+export interface PageSummary {
+    id: string;
+    siteId: string;
+    crawlRunId: string;
+    fromPageId: string;
+    url: string;
+    statusCode: number;
+    contentType: string;
+    responseTimeMs: number;
+    ttfbMs: number;
+    contentLengthBytes: number;
+    title: string;
+    metaDescription: string;
+    h1: string;
+    canonicalUrl: string;
+    robotsMeta: string;
+    lang: string;
+    titleCount: number;
+    metaDescriptionCount: number;
+    h1Count: number;
+    viewportContent: string;
+    wordCount: number;
+    ogTitle: string;
+    ogDescription: string;
+    ogImage: string;
+    ogUrl: string;
+    twitterCard: string;
+    redirectChain: RedirectHop[];
+    timedOut: boolean;
+    redirectLoop: boolean;
+    contentEncoding: string;
+    hreflangEntries: HreflangEntry[];
+    metaRefreshUrl: string;
+    contentHash: string;
+    crawledAt: DateAsString;
+    ampPage: boolean;
+    ampCustomCssBytes: number;
+    etag: string;
+    lastModified: string;
     xrobotsTag: string;
 }
 
@@ -313,6 +423,9 @@ export interface Site {
     requestTimeoutSeconds: number;
     userAgent: string;
     jsRendering: boolean;
+    maxFetchAttempts: number;
+    fetchBackoffBaseMs: number;
+    fetchBackoffMaxMs: number;
     verificationMethod: string;
     verificationToken: string;
     verifiedAt: DateAsString;
@@ -393,13 +506,24 @@ export interface Tenant {
     id: string;
     name: string;
     createdAt: DateAsString;
-    plan: Plan;
+    plan: string;
     stripeCustomerId: string;
     stripeSubscriptionId: string;
     subscriptionStatus: SubscriptionStatus;
     trialStartedAt: DateAsString;
     trialEndsAt: DateAsString;
     planSetAt: DateAsString;
+    hostRpsOverride: number;
+    hostBurstOverride: number;
+    creditBalance: number;
+    cycleStartedAt: DateAsString;
+    cycleEndsAt: DateAsString;
+    creditsGrantedThisCycle: number;
+    autoTopUpEnabled: boolean;
+    autoTopUpPackSku: string;
+    autoTopUpThreshold: number;
+    topUpInFlightIntentId: string;
+    topUpInFlightStartedAt: DateAsString;
 }
 
 export interface TenantBranding {
@@ -496,6 +620,8 @@ export type AuditTargetType = "TENANT" | "SITE" | "MEMBERSHIP" | "INVITE" | "CHA
 
 export type ChangelogTag = "NEW" | "IMPROVED" | "FIX" | "BREAKING";
 
+export type Kind = "DEBIT_HTTP" | "DEBIT_BROWSER" | "DEBIT_CHANGE_DETECT" | "GRANT_CYCLE" | "GRANT_TOPUP" | "GRANT_MIGRATION" | "GRANT_REFUND";
+
 export type EmailDeliveryKind = "PASSWORD_RESET" | "ALERT" | "DIGEST" | "INVITE" | "OTHER";
 
 export type EmailDeliveryStatus = "QUEUED" | "SENT" | "FAILED";
@@ -509,7 +635,5 @@ export type SiteCadence = "PAUSED" | "DAILY" | "HOURLY" | "CONTINUOUS";
 export type SubscriptionStatus = "NONE" | "TRIALING" | "ACTIVE" | "PAST_DUE" | "CANCELLED" | "INCOMPLETE";
 
 export type TlsCertStatus = "PROVISIONING" | "ACTIVE" | "RENEWING" | "FAILED";
-
-export type Plan = "STARTER" | "PROFESSIONAL" | "AGENCY";
 
 export type Role = "OWNER" | "ADMIN" | "EDITOR" | "VIEWER";

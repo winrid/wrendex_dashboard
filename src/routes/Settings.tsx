@@ -1746,14 +1746,19 @@ function SlackChannelCard({ tenantId }: { tenantId: string }) {
 // surfaced as the empty form.
 // ---------------------------------------------------------------------------
 
-function planAtLeast(plan: Plan | null | undefined, target: Plan): boolean {
+function planAtLeast(plan: string | null | undefined, target: Plan): boolean {
   if (!plan) return false
-  const order: Record<Plan, number> = {
+  // Under the credit-based billing model every tenant gets every feature, so
+  // this ordering is no longer meaningful. We keep the helper for callers
+  // that still gate on plan tier and treat the live tier ("BASE") as
+  // unlocking everything.
+  const order: Record<string, number> = {
+    BASE: 99,
     STARTER: 0,
     PROFESSIONAL: 1,
     AGENCY: 2,
   }
-  return order[plan] >= order[target]
+  return (order[plan] ?? -1) >= order[target]
 }
 
 const TEAMS_WEBHOOK_RE = /^https:\/\//

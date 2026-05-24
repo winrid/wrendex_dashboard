@@ -203,7 +203,8 @@ export function Signup() {
   ): Promise<boolean> => {
     try {
       const session = await client.createCheckoutSession(tenantId, {
-        priceTier: "PROFESSIONAL",
+        // Single base subscription under the credit-based billing model.
+        priceTier: "BASE",
         returnUrl:
           window.location.origin + `/t/${tenantId}/sites/${siteId}`,
         trialDays: 14,
