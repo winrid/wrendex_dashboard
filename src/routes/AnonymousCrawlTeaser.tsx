@@ -2,8 +2,8 @@
 //
 // Polls GET /api/anonymous-crawls/{token} every 2s while the run isn't
 // terminal and we haven't waited > 10 minutes. When the run completes we
-// switch into the teaser layout: HealthRing + stats strip + 3 visible
-// category rows + a frosted/locked card with the upgrade CTA.
+// switch into the teaser layout: HealthRing + stats strip + the full set
+// of issue categories + a CTA to start a trial / claim the audit.
 
 import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
@@ -22,25 +22,12 @@ import {
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Toaster } from "@/components/ui/sonner"
-import { LockIcon, AlertCircleIcon } from "lucide-react"
+import { AlertCircleIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { siteDisplayName } from "@/lib/format"
 
 const TERMINAL = new Set(["completed", "failed", "cancelled", "error"])
 const POLL_TIMEOUT_MS = 10 * 60 * 1000
-
-/** Locked categories we tease as "available with a trial". The teaser
- *  endpoint caps byCategory at 3, so this list is purely visual - the
- *  user sees what they'll unlock by claiming. */
-const LOCKED_CATEGORY_LABELS = [
-  "Performance",
-  "Internal links",
-  "Indexability",
-  "Structured data",
-  "Redirects",
-  "Images",
-  "Security",
-]
 
 function statsStrip(summary: AnonymousCrawlSummary, scanSeconds: number | null) {
   return [
@@ -257,10 +244,7 @@ export function AnonymousCrawlTeaser() {
   // ---------- completed teaser ----------
 
   const stats = statsStrip(data, scanSeconds)
-  const visibleCats = data.issuesSummary.byCategory.slice(0, 3)
-  const lockedCats = LOCKED_CATEGORY_LABELS.filter(
-    (label) => !visibleCats.some((c) => c.category === label),
-  )
+  const categories = data.issuesSummary.byCategory
   const score = data.healthScore ?? 0
   const sample = data.pagesCrawled
 
@@ -305,18 +289,18 @@ export function AnonymousCrawlTeaser() {
           ))}
         </div>
 
-        {/* Three visible category rows */}
+        {/* Full list of issue categories */}
         <div className="rounded-md border bg-card">
           <div className="border-b px-4 py-2 text-sm font-medium">
-            Top issue categories
+            Issue Categories
           </div>
-          {visibleCats.length === 0 ? (
+          {categories.length === 0 ? (
             <div className="px-4 py-6 text-center text-sm text-muted-foreground">
               No issues found in this crawl.
             </div>
           ) : (
             <ul className="divide-y">
-              {visibleCats.map((c) => (
+              {categories.map((c) => (
                 <CategoryRow
                   key={c.category}
                   label={c.category}
@@ -329,37 +313,16 @@ export function AnonymousCrawlTeaser() {
           )}
         </div>
 
-        {/* Locked categories teaser + CTA */}
+        {/* Trial / claim CTA */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <LockIcon className="size-4 text-muted-foreground" />
-              Plus {lockedCats.length} more categories in the full report
-            </CardTitle>
+            <CardTitle>See every alert page-by-page</CardTitle>
             <CardDescription>
-              Start a 14 day trial to unlock every category, see every alert
-              page-by-page, and turn on continuous monitoring.
+              Start a 14 day trial to drill into every alert page-by-page and
+              turn on continuous monitoring.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <ul
-              data-testid="locked-categories"
-              className="grid grid-cols-2 gap-2 sm:grid-cols-3"
-            >
-              {lockedCats.map((label) => (
-                <li
-                  key={label}
-                  className={cn(
-                    "flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm",
-                    "blur-sm select-none",
-                  )}
-                  aria-hidden
-                >
-                  <LockIcon className="size-3.5 text-muted-foreground" />
-                  <span>{label}</span>
-                </li>
-              ))}
-            </ul>
             <div className="flex flex-wrap gap-2">
               <Button onClick={onStartTrial}>
                 Start 14 day trial - see the full report

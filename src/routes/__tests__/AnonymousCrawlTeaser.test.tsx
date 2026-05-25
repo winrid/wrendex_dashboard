@@ -1,6 +1,6 @@
 // Smoke test for the anonymous-crawl teaser page. Mocks
-// getAnonymousCrawl to return a "completed" payload and asserts the
-// locked categories list renders.
+// getAnonymousCrawl to return a "completed" payload and asserts all
+// category rows render together with the trial CTA.
 
 import { describe, expect, it, vi } from "vitest"
 import { render, screen, waitFor } from "@testing-library/react"
@@ -41,7 +41,7 @@ function renderRoute(token: string) {
 }
 
 describe("AnonymousCrawlTeaser", () => {
-  it("renders the locked categories list when the crawl is completed", async () => {
+  it("renders every issue category and the trial CTA when the crawl is completed", async () => {
     const summary: AnonymousCrawlSummary = {
       token: "tok-abc",
       url: "https://acme.example",
@@ -88,22 +88,16 @@ describe("AnonymousCrawlTeaser", () => {
     renderRoute("tok-abc")
 
     await waitFor(() => {
-      expect(screen.getByText("Top issue categories")).toBeTruthy()
+      expect(screen.getByText("Issue Categories")).toBeTruthy()
     })
 
-    // The 3 visible categories show through
+    // All categories from the response show through.
     expect(screen.getByText("Title")).toBeTruthy()
     expect(screen.getByText("Meta description")).toBeTruthy()
     expect(screen.getByText("Headings")).toBeTruthy()
 
-    // The locked-categories list renders below; it should contain at
-    // least one entry that's NOT in the visible categories above.
-    const locked = screen.getByTestId("locked-categories")
-    expect(locked).toBeTruthy()
-    expect(locked.textContent).toMatch(/Performance|Internal links|Indexability/)
-    expect(
-      locked.querySelectorAll('[aria-hidden="true"]').length,
-    ).toBeGreaterThan(0)
+    // The locked-categories teaser is gone.
+    expect(screen.queryByTestId("locked-categories")).toBeNull()
 
     // The CTA is present.
     expect(
