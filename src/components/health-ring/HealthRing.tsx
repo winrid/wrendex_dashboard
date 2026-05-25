@@ -131,9 +131,9 @@ export function HealthRing({
       {/* Editorial rule + framing label. The two hairlines pinch the
           letter-spaced caption so it reads as a section opener instead of
           a generic field label. */}
-      <div className="flex w-full max-w-[240px] items-center gap-3">
+      <div className="flex w-full max-w-60 items-center gap-3">
         <span className="h-px flex-1 bg-[var(--brand-sage-rule)]/70" />
-        <span className="font-serif text-[11px] uppercase tracking-[0.28em] text-muted-foreground">
+        <span className="font-serif text-base uppercase tracking-[0.28em] text-muted-foreground">
           Your Score Is
         </span>
         <span className="h-px flex-1 bg-[var(--brand-sage-rule)]/70" />
@@ -181,13 +181,13 @@ export function HealthRing({
         <div className="absolute inset-0 flex flex-col items-center justify-center leading-none">
           <span
             className={cn(
-              "font-serif text-[64px] font-medium tabular-nums tracking-tight",
+              "font-serif text-6xl font-medium tabular-nums tracking-tight",
               band.text,
             )}
           >
             {rounded}
           </span>
-          <span className="mt-1 font-serif text-[11px] tracking-[0.18em] text-muted-foreground">
+          <span className="mt-1 font-serif text-sm tracking-[0.18em] text-muted-foreground">
             / 100
           </span>
         </div>
@@ -197,7 +197,7 @@ export function HealthRing({
         <div className="flex items-baseline gap-2">
           <span
             className={cn(
-              "font-serif text-base italic tracking-wide",
+              "font-serif text-lg italic tracking-wide",
               band.text,
             )}
           >
@@ -210,12 +210,12 @@ export function HealthRing({
             </span>
           ) : null}
         </div>
-        <p className="max-w-[260px] text-[11px] leading-relaxed text-muted-foreground">
+        <p className="max-w-65 text-sm leading-relaxed text-muted-foreground">
           {band.meaning}
         </p>
       </div>
 
-      <div className="text-[11px] text-muted-foreground">
+      <div className="text-sm text-muted-foreground">
         Sample:{" "}
         <span className="tabular-nums">{sample.toLocaleString()}</span>{" "}
         {sample === 1 ? "page" : "pages"}
