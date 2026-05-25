@@ -152,27 +152,26 @@ export function HealthRing({
           aria-hidden="true"
         />
         {/* Wren mark watermark zoomed into the head/face only. The source
-            image is a full side-profile bird; we oversize it and offset
-            the bird's head ( ~40% left / ~35% top of the source) into the
-            ring's centre, then clip everything past the ring's interior
-            with rounded-full + overflow-hidden. Pixel offsets are
-            intentional here — the alignment is image-content-dependent
-            and shouldn't follow the spacing scale. */}
+            image renders at its natural size inside the ring; the
+            overflow-hidden + rounded-full crop shows just the head/eye
+            region. Pixel offsets are intentional here — the alignment
+            is image-content-dependent and shouldn't follow the spacing
+            scale. */}
         <div
-          className="absolute inset-6 overflow-hidden rounded-full opacity-30"
+          className="absolute inset-6 overflow-hidden rounded-full opacity-[0.12]"
           aria-hidden="true"
         >
           <img
             src={wrenSrc}
             alt=""
             className="absolute dark:hidden"
-            style={{ width: "300px", height: "300px", left: "-60px", top: "-45px" }}
+            style={{ left: "10px", top: "-5px" }}
           />
           <img
             src={wrenLightSrc}
             alt=""
             className="absolute hidden dark:block"
-            style={{ width: "300px", height: "300px", left: "-60px", top: "-45px" }}
+            style={{ left: "10px", top: "-5px" }}
           />
         </div>
         <svg
@@ -213,7 +212,7 @@ export function HealthRing({
           >
             {rounded}
           </span>
-          <span className="mt-1 font-serif text-sm tracking-[0.18em] text-muted-foreground">
+          <span className="mt-1 font-serif text-sm tracking-[0.18em]">
             / 100
           </span>
         </div>
