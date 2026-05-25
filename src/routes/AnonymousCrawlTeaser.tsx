@@ -232,15 +232,20 @@ export function AnonymousCrawlTeaser() {
   // ---------- still polling ----------
 
   if (!data || !isCompleted) {
+    const isPostProcessing = data?.status === "post-processing"
     return (
       <PublicShell>
         <div className="w-full max-w-2xl space-y-6">
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold tracking-tight">
-              Auditing {data ? siteDisplayName(data.url) : "your site"}
+              {isPostProcessing
+                ? `Computing score for ${data ? siteDisplayName(data.url) : "your site"}`
+                : `Auditing ${data ? siteDisplayName(data.url) : "your site"}`}
             </h1>
             <p className="text-sm text-muted-foreground">
-              Hang tight - this usually finishes in a few minutes.
+              {isPostProcessing
+                ? "Pages are crawled. Cross-referencing links and running checks - this usually takes another minute."
+                : "Hang tight - this usually finishes in a few minutes."}
             </p>
           </div>
           <AnonymousCrawlProgress summary={data} />
