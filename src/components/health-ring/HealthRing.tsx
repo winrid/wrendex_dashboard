@@ -15,6 +15,8 @@
 
 import { useEffect, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
+import wrenSrc from "@/assets/wren.png"
+import wrenLightSrc from "@/assets/wren-light.png"
 
 export type HealthRingProps = {
   /** 0-100. Clamped on render so a stale snapshot can't blow the geometry. */
@@ -149,6 +151,30 @@ export function HealthRing({
           )}
           aria-hidden="true"
         />
+        {/* Wren mark watermark zoomed into the head/face only. The source
+            image is a full side-profile bird; we oversize it and offset
+            the bird's head ( ~40% left / ~35% top of the source) into the
+            ring's centre, then clip everything past the ring's interior
+            with rounded-full + overflow-hidden. Pixel offsets are
+            intentional here — the alignment is image-content-dependent
+            and shouldn't follow the spacing scale. */}
+        <div
+          className="absolute inset-6 overflow-hidden rounded-full opacity-30"
+          aria-hidden="true"
+        >
+          <img
+            src={wrenSrc}
+            alt=""
+            className="absolute dark:hidden"
+            style={{ width: "300px", height: "300px", left: "-60px", top: "-45px" }}
+          />
+          <img
+            src={wrenLightSrc}
+            alt=""
+            className="absolute hidden dark:block"
+            style={{ width: "300px", height: "300px", left: "-60px", top: "-45px" }}
+          />
+        </div>
         <svg
           width={SIZE}
           height={SIZE}
