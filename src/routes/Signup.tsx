@@ -30,9 +30,9 @@
 //   - We render Stripe Elements + PaymentElement, the user pastes a card,
 //     and we confirmSetup. On success Stripe persists the payment method
 //     against the customer.
-//   - We then call createCheckoutSession with priceTier=PROFESSIONAL +
-//     trialDays=14 to spin up the trial subscription, and window.location
-//     to the returned Checkout URL.
+//   - We then call createCheckoutSession with priceTier=BASE +
+//     trialDays=14 to spin up the trial subscription under the credit-based
+//     billing model, and window.location to the returned Checkout URL.
 //   - "Skip card capture" link is preserved so users can defer.
 
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom"

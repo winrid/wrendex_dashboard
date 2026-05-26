@@ -113,7 +113,7 @@ describe("Signup with claimToken", () => {
     })
     const [tenantId, args] = createCheckoutSession.mock.calls[0]
     expect(tenantId).toBe("t_1")
-    expect(args.priceTier).toBe("PROFESSIONAL")
+    expect(args.priceTier).toBe("BASE")
     expect(args.trialDays).toBe(14)
     expect(typeof args.returnUrl).toBe("string")
     expect(args.returnUrl).toContain("/t/t_1/sites/s_1")
