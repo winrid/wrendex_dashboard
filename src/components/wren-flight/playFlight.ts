@@ -123,9 +123,9 @@ export function playWrenFlight(opts: PlayWrenFlightOptions): WrenFlightHandle {
   const rig = opts.rig ?? DEFAULT_RIG
   const anim = opts.anim ?? DEFAULT_ANIM
   const container = opts.container ?? document.body
-  const zIndex = opts.zIndex ?? 9999
-  const sceneScale = opts.sceneScale ?? 1
-  const fontSize = opts.fontSize ?? 16
+  const zIndex = opts.zIndex ?? -1
+  const sceneScale = opts.sceneScale ?? 0.5
+  const fontSize = opts.fontSize ?? 32
   const fontColor = opts.fontColor ?? "#e7ecdc"
   const keepInDom = opts.keepInDom ?? false
   const pauseAtMs = opts.pauseAtMs ?? null
@@ -193,6 +193,7 @@ export function playWrenFlight(opts: PlayWrenFlightOptions): WrenFlightHandle {
     width: "0",
     height: "0",
     willChange: "transform",
+    opacity: "0.2",
   })
   const partsContainer = document.createElement("div")
   Object.assign(partsContainer.style, {
