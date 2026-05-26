@@ -218,7 +218,14 @@ export function playWrenFlight(opts: PlayWrenFlightOptions): WrenFlightHandle {
     const img = document.createElement("img")
     img.src = ASSET_URLS[name]
     img.draggable = false
-    Object.assign(img.style, { display: "block", pointerEvents: "none" })
+    // maxWidth: "none" overrides the dashboard's preflight `img { max-width:
+    // 100%; height: auto }` reset, which would otherwise collapse the part
+    // imgs to 0×0 because their wrappers are 0-width.
+    Object.assign(img.style, {
+      display: "block",
+      pointerEvents: "none",
+      maxWidth: "none",
+    })
     el.appendChild(img)
     const p = rig.parts[name]
     el.style.transformOrigin = `${p.pivotX * 100}% ${p.pivotY * 100}%`
