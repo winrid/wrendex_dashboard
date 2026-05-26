@@ -1,0 +1,9 @@
+{
+  "parts": {
+    "body": { "x": 100, "y": 104, "pivotX": 0.464, "pivotY": 0.434, "z": 1, "scale": 1 },
+    "head": { "x": 48,  "y": 23,  "pivotX": 0.85,  "pivotY": 0.95,  "z": 2, "scale": 1 },
+    "tail": { "x": 380, "y": -39, "pivotX": 0.171, "pivotY": 0.897, "z": 0, "scale": 1 }
+  },
+  "beakAttach": { "x": 80, "y": 80 },
+  "stageSize": { "w": 400, "h": 320 }
+}

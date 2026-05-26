@@ -526,6 +526,13 @@ export type AnonymousCrawlSummary = {
   isClaimed: boolean
   claimedByTenantId: string | null
   expiresAt: string | null
+  lastScrapedPage: AnonymousCrawlLastScrapedPage | null
+}
+
+export type AnonymousCrawlLastScrapedPage = {
+  url: string
+  title: string | null
+  crawledAt: string | null
 }
 
 export type AnonymousCrawlClaimResponse = {

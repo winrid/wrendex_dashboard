@@ -13,6 +13,7 @@ import { useApiClient } from "@/api/useApiClient"
 import type { AnonymousCrawlSummary } from "@/api/types"
 import { HealthRing } from "@/components/health-ring/HealthRing"
 import { AnonymousCrawlProgress } from "@/components/anonymous-crawl/AnonymousCrawlProgress"
+import { playWrenFlight } from "@/components/wren-flight/playFlight"
 import {
   Card,
   CardContent,
@@ -181,6 +182,51 @@ export function AnonymousCrawlTeaser() {
       },
     ])
   }, [data, client, token])
+
+  // === Wren fly-in animation ===
+  //
+  // Fire the bird immediately when the first scraped page title appears in
+  // the polled lastScrapedPage, then every 60s thereafter with whatever the
+  // most recently scraped page title is. The interval reads from a ref so
+  // it always sees the freshest poll result. The loop stops firing once the
+  // crawl reaches a terminal status; an in-flight animation cleans itself
+  // up and any active animation is cancelled on unmount.
+  const latestFlightInputRef = useRef<{ title: string | null; status: string | null }>({
+    title: null,
+    status: null,
+  })
+  latestFlightInputRef.current = {
+    title: data?.lastScrapedPage?.title ?? latestFlightInputRef.current.title,
+    status: data?.status ?? null,
+  }
+  const [flightStarted, setFlightStarted] = useState(false)
+  const activeFlightRef = useRef<{ cancel: () => void } | null>(null)
+
+  useEffect(() => {
+    if (flightStarted) return
+    if (!data?.lastScrapedPage?.title) return
+    setFlightStarted(true)
+  }, [data, flightStarted])
+
+  useEffect(() => {
+    if (!flightStarted) return
+    const fire = () => {
+      const { title, status } = latestFlightInputRef.current
+      if (!title) return
+      if (status && TERMINAL.has(status)) return
+      const handle = playWrenFlight({ text: title })
+      activeFlightRef.current = handle
+      void handle.promise.finally(() => {
+        if (activeFlightRef.current === handle) activeFlightRef.current = null
+      })
+    }
+    fire()
+    const interval = window.setInterval(fire, 60_000)
+    return () => {
+      window.clearInterval(interval)
+      if (activeFlightRef.current) activeFlightRef.current.cancel()
+    }
+  }, [flightStarted])
 
   // Scan duration ("Scanned in N seconds" proof-of-work). The BE now ships
   // startedAt + finishedAt on the AnonymousCrawlSummary; we compute the
