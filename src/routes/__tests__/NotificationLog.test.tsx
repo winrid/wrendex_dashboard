@@ -40,6 +40,7 @@ function makeEntry(
     tenantId: "t_1",
     channel,
     recipient: `${channel.toLowerCase()}@example.com`,
+    subject: `Alert: ${channel}`,
     status,
     alertType: "TITLE_MISSING",
     alertId: "alert_1",

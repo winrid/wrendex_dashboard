@@ -18,7 +18,6 @@ import type {
   AuditLogResult,
   AuthLoginRequest,
   AuthLoginResponse,
-  AuthLoginResponseFull,
   AuthSignupRequest,
   AuthSignupResponse,
   AutoTopUpSettings,
@@ -310,8 +309,8 @@ export function createApiClient(opts: CreateApiClientOptions) {
    *  the in-memory slot so subsequent calls are authorised. */
   async function login2fa(
     input: Login2faRequest,
-  ): Promise<AuthLoginResponseFull> {
-    const res = await request<AuthLoginResponseFull>(
+  ): Promise<AuthLoginResponse> {
+    const res = await request<AuthLoginResponse>(
       "POST",
       "/api/auth/login/2fa",
       { body: input },

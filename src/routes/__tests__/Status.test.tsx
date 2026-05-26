@@ -71,6 +71,8 @@ const SAMPLE: StatusResponse = {
       updatedAt: null,
     },
   ],
+  incidents: null,
+  sloTargets: null,
 }
 
 describe("Status page", () => {

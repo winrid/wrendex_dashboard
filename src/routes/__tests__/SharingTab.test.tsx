@@ -35,7 +35,13 @@ function makeShare(overrides: Partial<ShareLink> = {}): ShareLink {
     passwordProtected: false,
     createdAt: "2026-05-02T00:00:00Z",
     expiresAt: null,
+    revokedAt: null,
+    lastViewedAt: null,
+    createdByUserId: null,
+    createdByEmail: null,
     viewCount: 7,
+    planLimit: null,
+    planUsed: null,
     ...overrides,
   }
 }

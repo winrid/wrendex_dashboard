@@ -19,7 +19,11 @@ framer-motion, React Router 6. See plan section 0.1.
    in `src/api/types.ts`; nothing outside `src/api/` may construct a URL
    string for the backend. Reviewer agents reject PRs that bypass it.
    If an endpoint is missing, add the method + types in `src/api/`;
-   do NOT escape-hatch around it.
+   do NOT escape-hatch around it. **Wire-shape types are codegen'd** from
+   the backend DTOs at `com.bigbug.api.dto.**`; re-export from
+   `./generated/wrendex-models` rather than hand-writing. See
+   `backend/src/main/java/com/bigbug/api/CLAUDE.md` for the DTO
+   discipline and `pnpm codegen` to regenerate.
 
 2. **Tenant-scoped routes only.** All authenticated routes nest under
    `/t/:tenantId/...`. New routes that don't follow this pattern are

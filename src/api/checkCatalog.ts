@@ -1697,6 +1697,17 @@ const ENTRIES: CheckCatalogEntry[] = [
       "Consolidate shared rules into a single stylesheet and trim duplicates from per-page CSS.",
     marketingId: "css.duplicate-stylesheet",
   },
+  {
+    type: "OUT_OF_CREDITS",
+    category: "Billing",
+    severityDefault: "ERROR",
+    title: "Out of credits",
+    description:
+      "The crawl stopped because the tenant ran out of credits before all pages could be fetched.",
+    howToFix:
+      "Top up credits from Settings -> Billing (or enable auto top-up) so the next scheduled crawl completes.",
+    marketingId: "billing.out-of-credits",
+  },
 ]
 
 // ---------------------------------------------------------------------------

@@ -62,6 +62,8 @@ function makeMember(
   role: TenantMember["role"] = "EDITOR",
 ): TenantMember {
   return {
+    id: "membership_" + userId,
+    tenantId: "tenant_test",
     userId,
     email,
     role,

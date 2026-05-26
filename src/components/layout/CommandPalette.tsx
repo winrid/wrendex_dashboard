@@ -116,8 +116,7 @@ export function CommandPalette() {
       check: [],
     }
     for (const r of items_) {
-      const kind = r.kind in out ? r.kind : null
-      if (kind) out[kind].push(r)
+      if (r.kind in out) out[r.kind].push(r)
     }
     return out
   }, [searchData])
