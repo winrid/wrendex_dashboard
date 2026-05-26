@@ -29,6 +29,18 @@ import { siteDisplayName } from "@/lib/format"
 const TERMINAL = new Set(["completed", "failed", "cancelled", "error"])
 const POLL_TIMEOUT_MS = 10 * 60 * 1000
 
+function formatScanDuration(totalSeconds: number): string {
+  if (totalSeconds < 60) return `${totalSeconds}s`
+  if (totalSeconds < 3600) {
+    const m = Math.floor(totalSeconds / 60)
+    const s = totalSeconds % 60
+    return s === 0 ? `${m}m` : `${m}m ${s}s`
+  }
+  const h = Math.floor(totalSeconds / 3600)
+  const m = Math.floor((totalSeconds % 3600) / 60)
+  return m === 0 ? `${h}h` : `${h}h ${m}m`
+}
+
 function statsStrip(summary: AnonymousCrawlSummary, scanSeconds: number | null) {
   return [
     { label: "Pages crawled", value: summary.pagesCrawled.toLocaleString() },
@@ -42,7 +54,7 @@ function statsStrip(summary: AnonymousCrawlSummary, scanSeconds: number | null) 
     },
     {
       label: "Scanned in",
-      value: scanSeconds != null ? `${scanSeconds}s` : "-",
+      value: scanSeconds != null ? formatScanDuration(scanSeconds) : "-",
     },
   ]
 }
