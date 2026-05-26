@@ -69,6 +69,36 @@ function safeHostname(url: string): string {
   }
 }
 
+// Last path segment, decoded, or hostname if the path is just "/".
+function basenameOfUrl(url: string): string {
+  try {
+    const u = new URL(url)
+    const segs = u.pathname.split("/").filter(Boolean)
+    const last = segs[segs.length - 1]
+    if (last) {
+      try {
+        return decodeURIComponent(last)
+      } catch {
+        return last
+      }
+    }
+    return u.hostname
+  } catch {
+    return url
+  }
+}
+
+// Cargo text for the fly-in: prefer the scraped page's title, fall back to
+// the URL basename when title is null/blank (legitimately happens for pages
+// with no <title>). Truncated so it fits the animation's cargo translation.
+function flightTextFor(
+  p: { url: string; title: string | null } | null | undefined,
+): string | null {
+  if (!p) return null
+  const raw = p.title && p.title.trim() ? p.title.trim() : basenameOfUrl(p.url)
+  return raw.length <= 60 ? raw : raw.slice(0, 59) + "…"
+}
+
 function CategoryRow({
   label,
   errorCount,
@@ -185,18 +215,26 @@ export function AnonymousCrawlTeaser() {
 
   // === Wren fly-in animation ===
   //
-  // Fire the bird immediately when the first scraped page title appears in
-  // the polled lastScrapedPage, then every 60s thereafter with whatever the
-  // most recently scraped page title is. The interval reads from a ref so
-  // it always sees the freshest poll result. The loop stops firing once the
-  // crawl reaches a terminal status; an in-flight animation cleans itself
-  // up and any active animation is cancelled on unmount.
-  const latestFlightInputRef = useRef<{ title: string | null; status: string | null }>({
-    title: null,
+  // Fire the bird the first time a scraped page shows up in the polled
+  // lastScrapedPage. Detection keys off `url` (always populated once a page
+  // is scraped) rather than `title` (legitimately null for pages with no
+  // <title> tag, which would otherwise prevent the animation from ever
+  // firing). Cargo text falls back to the URL's basename when title is
+  // blank, via flightTextFor.
+  //
+  // Cadence is status-dependent:
+  //   - audit already complete at first detection → one shot, no interval
+  //   - audit running → fire immediately + every 60s until status flips to
+  //     terminal, at which point the interval stops scheduling new flights
+  //
+  // The interval reads from a ref so it always sees the freshest poll
+  // result. Any in-flight animation is cancelled on unmount.
+  const flightInputRef = useRef<{ text: string | null; status: string | null }>({
+    text: null,
     status: null,
   })
-  latestFlightInputRef.current = {
-    title: data?.lastScrapedPage?.title ?? latestFlightInputRef.current.title,
+  flightInputRef.current = {
+    text: flightTextFor(data?.lastScrapedPage) ?? flightInputRef.current.text,
     status: data?.status ?? null,
   }
   const [flightStarted, setFlightStarted] = useState(false)
@@ -204,24 +242,38 @@ export function AnonymousCrawlTeaser() {
 
   useEffect(() => {
     if (flightStarted) return
-    if (!data?.lastScrapedPage?.title) return
+    if (!data?.lastScrapedPage?.url) return
     setFlightStarted(true)
   }, [data, flightStarted])
 
   useEffect(() => {
     if (!flightStarted) return
-    const fire = () => {
-      const { title, status } = latestFlightInputRef.current
-      if (!title) return
-      if (status && TERMINAL.has(status)) return
-      const handle = playWrenFlight({ text: title })
+
+    const fireOnce = () => {
+      const text = flightInputRef.current.text
+      if (!text) return
+      const handle = playWrenFlight({ text })
       activeFlightRef.current = handle
       void handle.promise.finally(() => {
         if (activeFlightRef.current === handle) activeFlightRef.current = null
       })
     }
-    fire()
-    const interval = window.setInterval(fire, 60_000)
+
+    fireOnce()
+
+    // Already complete on first detection: just the one shot.
+    const initialStatus = flightInputRef.current.status
+    if (initialStatus && TERMINAL.has(initialStatus)) return
+
+    // Still running: every 60s until status flips to terminal.
+    const interval = window.setInterval(() => {
+      const s = flightInputRef.current.status
+      if (s && TERMINAL.has(s)) {
+        window.clearInterval(interval)
+        return
+      }
+      fireOnce()
+    }, 60_000)
     return () => {
       window.clearInterval(interval)
       if (activeFlightRef.current) activeFlightRef.current.cancel()
