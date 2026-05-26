@@ -91,7 +91,17 @@ export interface PlayWrenFlightOptions {
   rig?: WrenRig
   /** Override the animation. Defaults to bundled anim.json. */
   anim?: WrenAnim
-  /** Cargo text styling. */
+  /**
+   * Scales the whole scene (bird + cargo + flight trajectory) uniformly
+   * around the landing point. The rig/anim were authored at a desktop-sized
+   * viewport; smaller viewports need a smaller scale so the bird's start
+   * and end positions stay on-screen. Default 0.45.
+   */
+  sceneScale?: number
+  /**
+   * Cargo font size in pre-scale pixels. Effective on-screen size is
+   * `fontSize * sceneScale`. Default 36 (≈ 16px at sceneScale 0.45).
+   */
   fontSize?: number
   fontColor?: string
 }
@@ -109,6 +119,7 @@ export function playWrenFlight(opts: PlayWrenFlightOptions): WrenFlightHandle {
   const anim = opts.anim ?? DEFAULT_ANIM
   const container = opts.container ?? document.body
   const zIndex = opts.zIndex ?? 9999
+  const sceneScale = opts.sceneScale ?? 0.45
   const fontSize = opts.fontSize ?? 36
   const fontColor = opts.fontColor ?? "#e7ecdc"
 
@@ -132,12 +143,28 @@ export function playWrenFlight(opts: PlayWrenFlightOptions): WrenFlightHandle {
     overflow: "hidden",
   })
 
+  // === Scene wrapper ===
+  // Single positioned anchor at the landing point that scales the whole
+  // bird + cargo group uniformly. Authoring was at a desktop viewport;
+  // sceneScale = 0.45 keeps the rig's flight start (~+965px from landing)
+  // visible on a typical laptop and most phones.
+  const scene = document.createElement("div")
+  Object.assign(scene.style, {
+    position: "absolute",
+    left: landX + "px",
+    top: landY + "px",
+    width: "0",
+    height: "0",
+    transform: `scale(${sceneScale})`,
+    transformOrigin: "0 0",
+  })
+
   // === Cargo (text) ===
   const cargo = document.createElement("div")
   Object.assign(cargo.style, {
     position: "absolute",
-    left: landX + "px",
-    top: landY + "px",
+    left: "0",
+    top: "0",
     fontSize: fontSize + "px",
     fontWeight: "700",
     letterSpacing: "-0.02em",
@@ -148,14 +175,14 @@ export function playWrenFlight(opts: PlayWrenFlightOptions): WrenFlightHandle {
     transformOrigin: "0% 50%",
   })
   cargo.textContent = opts.text
-  stage.appendChild(cargo)
+  scene.appendChild(cargo)
 
   // === Bird wrapper + parts ===
   const bird = document.createElement("div")
   Object.assign(bird.style, {
     position: "absolute",
-    left: landX + "px",
-    top: landY + "px",
+    left: "0",
+    top: "0",
     width: "0",
     height: "0",
     willChange: "transform",
@@ -194,7 +221,8 @@ export function playWrenFlight(opts: PlayWrenFlightOptions): WrenFlightHandle {
     partsContainer.appendChild(el)
     partEls[name] = el
   }
-  stage.appendChild(bird)
+  scene.appendChild(bird)
+  stage.appendChild(scene)
   container.appendChild(stage)
 
   // Snap to t=0 immediately so the first paint after mount already shows the
