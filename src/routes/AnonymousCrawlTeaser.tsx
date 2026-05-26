@@ -252,7 +252,7 @@ export function AnonymousCrawlTeaser() {
     const fireOnce = () => {
       const text = flightInputRef.current.text
       if (!text) return
-      const handle = playWrenFlight({ text, keepInDom: true })
+      const handle = playWrenFlight({ text, keepInDom: true, pauseAtMs: 1000 })
       activeFlightRef.current = handle
       void handle.promise.finally(() => {
         if (activeFlightRef.current === handle) activeFlightRef.current = null

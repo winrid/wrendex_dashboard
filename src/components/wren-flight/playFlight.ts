@@ -104,6 +104,11 @@ export interface PlayWrenFlightOptions {
    * inspectable in DevTools. Default false (cleanup runs as normal).
    */
   keepInDom?: boolean
+  /**
+   * Debug: halt the rAF loop at this timestamp (ms) and freeze the scene
+   * there instead of running through `anim.durationMs`. Default null.
+   */
+  pauseAtMs?: number | null
 }
 
 export interface WrenFlightHandle {
@@ -123,6 +128,7 @@ export function playWrenFlight(opts: PlayWrenFlightOptions): WrenFlightHandle {
   const fontSize = opts.fontSize ?? 16
   const fontColor = opts.fontColor ?? "#e7ecdc"
   const keepInDom = opts.keepInDom ?? false
+  const pauseAtMs = opts.pauseAtMs ?? null
 
   // Landing point in viewport pixels.
   const containerRect = container === document.body
@@ -266,6 +272,14 @@ export function playWrenFlight(opts: PlayWrenFlightOptions): WrenFlightHandle {
         return
       }
       const elapsed = performance.now() - started
+      // Debug halt: freeze the scene at the requested timestamp and resolve.
+      // No cleanup() so the DOM survives for inspection (paired with
+      // keepInDom: true typically).
+      if (pauseAtMs != null && elapsed >= pauseAtMs) {
+        renderAt(pauseAtMs)
+        resolve()
+        return
+      }
       if (elapsed >= anim.durationMs) {
         renderAt(anim.durationMs)
         // One more frame so the final state is painted before unmount.
