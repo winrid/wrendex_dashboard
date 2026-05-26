@@ -18,7 +18,7 @@ export function AnonymousCrawlProgress({ summary }: AnonymousCrawlProgressProps)
   const discovered = summary?.pagesDiscovered ?? 0
 
   return (
-    <div className="rounded-md border bg-card p-6">
+    <div className="rounded-md border bg-card/50 p-6">
       <div className="flex items-center gap-3">
         <Loader2Icon className="size-5 animate-spin text-primary" />
         <div className="space-y-0.5">

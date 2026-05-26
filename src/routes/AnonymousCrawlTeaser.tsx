@@ -382,7 +382,7 @@ export function AnonymousCrawlTeaser() {
         </div>
 
         {/* Top: HealthRing */}
-        <div className="rounded-md border bg-card p-6">
+        <div className="rounded-md border bg-card/50 p-6">
           <HealthRing score={score} sample={sample} delta={null} />
         </div>
 
@@ -391,7 +391,7 @@ export function AnonymousCrawlTeaser() {
           {stats.map((s) => (
             <div
               key={s.label}
-              className="rounded-md border bg-card px-3 py-2 text-sm"
+              className="rounded-md border bg-card/50 px-3 py-2 text-sm"
             >
               <div className="text-xs text-muted-foreground">{s.label}</div>
               <div className="text-lg font-semibold tabular-nums">{s.value}</div>
@@ -400,7 +400,7 @@ export function AnonymousCrawlTeaser() {
         </div>
 
         {/* Full list of issue categories */}
-        <div className="rounded-md border bg-card">
+        <div className="rounded-md border bg-card/50">
           <div className="border-b px-4 py-2 text-sm font-medium">
             Issue Categories
           </div>
@@ -424,7 +424,7 @@ export function AnonymousCrawlTeaser() {
         </div>
 
         {/* Trial / claim CTA */}
-        <Card>
+        <Card className="bg-card/50">
           <CardHeader>
             <CardTitle>See every alert page-by-page</CardTitle>
             <CardDescription>

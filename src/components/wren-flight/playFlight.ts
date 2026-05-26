@@ -100,6 +100,12 @@ export interface PlayWrenFlightOptions {
   fontSize?: number
   fontColor?: string
   /**
+   * The bird's X translation value that should map to "right edge of
+   * viewport". Authored value: 965 (with the bird flying in from
+   * off-screen-right at that translate). Default 965.
+   */
+  viewportReferenceX?: number
+  /**
    * Debug: skip the post-animation DOM cleanup so the elements remain
    * inspectable in DevTools. Default false (cleanup runs as normal).
    */
@@ -126,7 +132,13 @@ export function playWrenFlight(opts: PlayWrenFlightOptions): WrenFlightHandle {
   const zIndex = opts.zIndex ?? -1
   const sceneScale = opts.sceneScale ?? 0.5
   const fontSize = opts.fontSize ?? 32
-  const fontColor = opts.fontColor ?? "#e7ecdc"
+  const fontColor = opts.fontColor ?? "#000"
+  // The bird + cargo X translations were authored against a desktop-width
+  // viewport. To make the bird actually start at the right edge of any
+  // user's viewport and end past the left edge, scale every X translation
+  // so that this reference value maps to half the viewport width (the
+  // distance from the centered landing point to either edge).
+  const referenceX = opts.viewportReferenceX ?? 965
   const keepInDom = opts.keepInDom ?? false
   const pauseAtMs = opts.pauseAtMs ?? null
 
@@ -178,7 +190,6 @@ export function playWrenFlight(opts: PlayWrenFlightOptions): WrenFlightHandle {
     color: fontColor,
     whiteSpace: "nowrap",
     willChange: "transform",
-    textShadow: "0 2px 12px rgba(0,0,0,0.45)",
     transformOrigin: "0% 50%",
   })
   cargo.textContent = opts.text
@@ -245,11 +256,18 @@ export function playWrenFlight(opts: PlayWrenFlightOptions): WrenFlightHandle {
   renderAt(0)
 
   function renderAt(t: number): void {
+    // Viewport-relative X scale: anim values for bird + cargo are stretched
+    // so the authored reference X (default 965) lines up with half the
+    // current viewport width. Computed each frame so live resizes adapt.
+    const vw =
+      container === document.body ? window.innerWidth : container.clientWidth
+    const xMul = vw / 2 / (referenceX * sceneScale)
+
     const birdKf = sample(anim.tracks.bird, t) ?? { t, x: 0, y: 0, rot: 0 }
-    bird.style.transform = `translate(${birdKf.x}px, ${birdKf.y}px) rotate(${birdKf.rot}deg)`
+    bird.style.transform = `translate(${birdKf.x * xMul}px, ${birdKf.y}px) rotate(${birdKf.rot}deg)`
 
     const cargoKf = sample(anim.tracks.cargo, t) ?? { t, x: 0, y: 0, rot: 0 }
-    cargo.style.transform = `translate(${cargoKf.x}px, ${cargoKf.y}px) rotate(${cargoKf.rot}deg)`
+    cargo.style.transform = `translate(${cargoKf.x * xMul}px, ${cargoKf.y}px) rotate(${cargoKf.rot}deg)`
 
     for (const name of PART_NAMES) {
       const el = partEls[name]
