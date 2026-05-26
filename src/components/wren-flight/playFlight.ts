@@ -83,10 +83,17 @@ export interface PlayWrenFlightOptions {
   /** Overlay z-index. Defaults to 9999. */
   zIndex?: number
   /**
-   * Where the bird lands (viewport-relative pixels). Defaults to the center
-   * of the container's bounding rect.
+   * Where the bird lands (viewport-relative pixels). Defaults to: x = center
+   * of the container, y = positioned so the cargo's "on-ground" rest spot
+   * sits `bottomMargin` px above the container's bottom edge.
    */
   landingPositionPx?: { x: number; y: number }
+  /**
+   * Bottom padding (px) between the cargo's resting "ground" position and
+   * the container's bottom edge. Only used when `landingPositionPx.y` is
+   * not provided. Default 30.
+   */
+  bottomMargin?: number
   /** Override the rig (parts layout). Defaults to bundled rig.json. */
   rig?: WrenRig
   /** Override the animation. Defaults to bundled anim.json. */
@@ -142,12 +149,19 @@ export function playWrenFlight(opts: PlayWrenFlightOptions): WrenFlightHandle {
   const keepInDom = opts.keepInDom ?? false
   const pauseAtMs = opts.pauseAtMs ?? null
 
-  // Landing point in viewport pixels.
+  // Landing point in viewport pixels. The default Y anchors the bird so
+  // the cargo's at-rest position (its first keyframe's Y in the anim track)
+  // lands `bottomMargin` px above the container's bottom edge — i.e. the
+  // payload sits on the "ground" and the bird descends to pick it up.
   const containerRect = container === document.body
     ? { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight }
     : container.getBoundingClientRect()
   const landX = opts.landingPositionPx?.x ?? containerRect.width * 0.5
-  const landY = opts.landingPositionPx?.y ?? containerRect.height * 0.55
+  const bottomMargin = opts.bottomMargin ?? 30
+  const cargoRestY = anim.tracks.cargo[0]?.y ?? 0
+  const landY =
+    opts.landingPositionPx?.y ??
+    containerRect.height - cargoRestY * sceneScale - bottomMargin
 
   // === Stage overlay ===
   const stage = document.createElement("div")
