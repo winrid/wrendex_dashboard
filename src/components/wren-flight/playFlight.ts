@@ -93,17 +93,17 @@ export interface PlayWrenFlightOptions {
   anim?: WrenAnim
   /**
    * Scales the whole scene (bird + cargo + flight trajectory) uniformly
-   * around the landing point. The rig/anim were authored at a desktop-sized
-   * viewport; smaller viewports need a smaller scale so the bird's start
-   * and end positions stay on-screen. Default 0.45.
+   * around the landing point. Default 1 (no scale).
    */
   sceneScale?: number
-  /**
-   * Cargo font size in pre-scale pixels. Effective on-screen size is
-   * `fontSize * sceneScale`. Default 36 (≈ 16px at sceneScale 0.45).
-   */
+  /** Cargo font size in px. Default 16. */
   fontSize?: number
   fontColor?: string
+  /**
+   * Debug: skip the post-animation DOM cleanup so the elements remain
+   * inspectable in DevTools. Default false (cleanup runs as normal).
+   */
+  keepInDom?: boolean
 }
 
 export interface WrenFlightHandle {
@@ -119,9 +119,10 @@ export function playWrenFlight(opts: PlayWrenFlightOptions): WrenFlightHandle {
   const anim = opts.anim ?? DEFAULT_ANIM
   const container = opts.container ?? document.body
   const zIndex = opts.zIndex ?? 9999
-  const sceneScale = opts.sceneScale ?? 0.45
-  const fontSize = opts.fontSize ?? 36
+  const sceneScale = opts.sceneScale ?? 1
+  const fontSize = opts.fontSize ?? 16
   const fontColor = opts.fontColor ?? "#e7ecdc"
+  const keepInDom = opts.keepInDom ?? false
 
   // Landing point in viewport pixels.
   const containerRect = container === document.body
@@ -132,6 +133,7 @@ export function playWrenFlight(opts: PlayWrenFlightOptions): WrenFlightHandle {
 
   // === Stage overlay ===
   const stage = document.createElement("div")
+  stage.dataset.wrenFlight = "1"
   Object.assign(stage.style, {
     position: container === document.body ? "fixed" : "absolute",
     left: "0",
@@ -144,10 +146,8 @@ export function playWrenFlight(opts: PlayWrenFlightOptions): WrenFlightHandle {
   })
 
   // === Scene wrapper ===
-  // Single positioned anchor at the landing point that scales the whole
-  // bird + cargo group uniformly. Authoring was at a desktop viewport;
-  // sceneScale = 0.45 keeps the rig's flight start (~+965px from landing)
-  // visible on a typical laptop and most phones.
+  // Single positioned anchor at the landing point. Default sceneScale 1
+  // so bird + cargo render at the geometry the rig+anim were authored at.
   const scene = document.createElement("div")
   Object.assign(scene.style, {
     position: "absolute",
@@ -158,6 +158,7 @@ export function playWrenFlight(opts: PlayWrenFlightOptions): WrenFlightHandle {
     transform: `scale(${sceneScale})`,
     transformOrigin: "0 0",
   })
+  scene.dataset.wrenScene = "1"
 
   // === Cargo (text) ===
   const cargo = document.createElement("div")
@@ -254,7 +255,7 @@ export function playWrenFlight(opts: PlayWrenFlightOptions): WrenFlightHandle {
 
   const cleanup = (): void => {
     cancelAnimationFrame(rafId)
-    if (stage.parentNode) stage.parentNode.removeChild(stage)
+    if (!keepInDom && stage.parentNode) stage.parentNode.removeChild(stage)
   }
 
   const promise = new Promise<void>((resolve) => {
