@@ -1,9 +1,12 @@
 // Public anonymous-crawl teaser results page (plan section 2.0).
 //
-// Polls GET /api/anonymous-crawls/{token} every 2s while the run isn't
-// terminal and we haven't waited > 10 minutes. When the run completes we
-// switch into the teaser layout: HealthRing + stats strip + the full set
-// of issue categories + a CTA to start a trial / claim the audit.
+// Polls GET /api/anonymous-crawls/{token} every 2s until status hits
+// TERMINAL. We deliberately do not cap polling on a client-side timer -
+// a slow crawl that exceeded an arbitrary timeout would otherwise freeze
+// the UI on a stale count while the BE keeps making progress, only
+// "unfreezing" on refresh. When the run completes we switch into the
+// teaser layout: HealthRing + stats strip + the full set of issue
+// categories + a CTA to start a trial / claim the audit.
 
 import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
@@ -28,7 +31,6 @@ import { cn } from "@/lib/utils"
 import { siteDisplayName } from "@/lib/format"
 
 const TERMINAL = new Set(["completed", "failed", "cancelled", "error"])
-const POLL_TIMEOUT_MS = 10 * 60 * 1000
 
 function formatScanDuration(totalSeconds: number): string {
   if (totalSeconds < 60) return `${totalSeconds}s`
@@ -150,7 +152,6 @@ export function AnonymousCrawlTeaser() {
   const { token = "" } = useParams<{ token: string }>()
   const navigate = useNavigate()
   const client = useApiClient()
-  const [pollStartedAt] = useState<number>(() => Date.now())
 
   const q = useQuery({
     queryKey: ["anonymous-crawl", token],
@@ -160,7 +161,6 @@ export function AnonymousCrawlTeaser() {
       const data = query.state.data
       const status = data?.status
       if (status && TERMINAL.has(status)) return false
-      if (Date.now() - pollStartedAt > POLL_TIMEOUT_MS) return false
       return 2_000
     },
     retry: (failureCount, error) => {
