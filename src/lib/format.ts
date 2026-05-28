@@ -53,6 +53,14 @@ export function formatBytes(bytes: number | null | undefined): string {
   return `${gb.toFixed(2)} GB`
 }
 
+/** Pretty-prints a CPD token count as estimated bytes (heuristic: tokens * 5).
+ *  Used for the Duplicate Code stats badges. Display-only; the persisted
+ *  token count is what aggregates against. Returns "-" for null/non-positive. */
+export function formatTokenBytes(tokens: number | null | undefined): string {
+  if (tokens == null || !Number.isFinite(tokens) || tokens <= 0) return "-"
+  return formatBytes(tokens * 5)
+}
+
 /** Pretty-prints the cadence enum for the cadence pill on SiteDetail. */
 export function formatCadence(cadence: string | null | undefined): string {
   if (!cadence || cadence === "PAUSED") return "Not scheduled"

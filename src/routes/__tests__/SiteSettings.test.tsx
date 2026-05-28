@@ -13,6 +13,7 @@ afterEach(() => {
 })
 import { MemoryRouter, Route, Routes } from "react-router-dom"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { ApiError } from "@/api/client"
 
 const getSite = vi.fn().mockResolvedValue({
   id: "s_1",
@@ -74,6 +75,17 @@ const updateAlertRule = vi.fn().mockImplementation(
   }),
 )
 const deleteSite = vi.fn().mockResolvedValue(undefined)
+const updateSite = vi.fn().mockImplementation(
+  async (_tenantId: string, _siteId: string, input: { maxPages?: number }) => ({
+    id: "s_1",
+    tenantId: "t_1",
+    url: "https://acme.example",
+    createdAt: "2026-04-30T00:00:00Z",
+    verifiedAt: "2026-04-30T00:00:00Z",
+    cadence: "DAILY",
+    maxPages: input.maxPages,
+  }),
+)
 const requestSiteVerification = vi.fn()
 const confirmSiteVerification = vi.fn()
 const getBilling = vi.fn().mockResolvedValue({
@@ -96,6 +108,7 @@ vi.mock("@/api/useApiClient", () => ({
     createCustomAlertRule,
     deleteAlertRule,
     deleteSite,
+    updateSite,
     requestSiteVerification,
     confirmSiteVerification,
     getBilling,
@@ -276,6 +289,76 @@ function renderRoute() {
   )
 }
 
+describe("SiteSettings - crawl limits card", () => {
+  it("disables the max-pages input and shows verify CTA when the site is unverified", async () => {
+    getSite.mockResolvedValue({
+      id: "s_1",
+      tenantId: "t_1",
+      url: "https://acme.example",
+      createdAt: "2026-04-30T00:00:00Z",
+      verifiedAt: null,
+      cadence: "PAUSED",
+      maxPages: null,
+    })
+
+    renderRoute()
+
+    const input = (await screen.findByTestId(
+      "max-pages-input",
+    )) as HTMLInputElement
+    expect(input.disabled).toBe(true)
+    expect(screen.getByTestId("max-pages-verify-link")).toBeTruthy()
+  })
+
+  it("calls updateSite with the new maxPages when Save is clicked", async () => {
+    renderRoute()
+
+    const input = (await screen.findByTestId(
+      "max-pages-input",
+    )) as HTMLInputElement
+    expect(input.disabled).toBe(false)
+    fireEvent.change(input, { target: { value: "250000" } })
+
+    const save = screen.getByTestId("max-pages-save")
+    await act(async () => {
+      fireEvent.click(save)
+    })
+
+    await waitFor(() => {
+      expect(updateSite).toHaveBeenCalledWith("t_1", "s_1", {
+        maxPages: 250000,
+      })
+    })
+  })
+
+  it("surfaces a Verify CTA toast when the backend rejects with 409 VERIFICATION_REQUIRED", async () => {
+    updateSite.mockRejectedValueOnce(
+      new ApiError(409, "verify", {
+        code: "VERIFICATION_REQUIRED",
+        message: "Verify site ownership to raise the page limit above 10,000.",
+      }),
+    )
+
+    renderRoute()
+
+    const input = (await screen.findByTestId(
+      "max-pages-input",
+    )) as HTMLInputElement
+    fireEvent.change(input, { target: { value: "50000" } })
+
+    const save = screen.getByTestId("max-pages-save")
+    await act(async () => {
+      fireEvent.click(save)
+    })
+
+    await waitFor(() => {
+      expect(updateSite).toHaveBeenCalled()
+    })
+    // The verify action surfaces as a button in the toast.
+    await screen.findByRole("button", { name: /^Verify$/ })
+  })
+})
+
 describe("SiteSettings - schedule", () => {
   it("calls updateSchedule when Save is clicked", async () => {
     renderRoute()
@@ -285,7 +368,7 @@ describe("SiteSettings - schedule", () => {
     await waitFor(() => {
       expect(getSchedule).toHaveBeenCalled()
     })
-    const saveButton = await screen.findByRole("button", { name: /^Save$/ })
+    const saveButton = await screen.findByTestId("schedule-save")
     expect((saveButton as HTMLButtonElement).disabled).toBe(false)
 
     await act(async () => {

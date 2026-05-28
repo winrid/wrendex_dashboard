@@ -81,6 +81,11 @@ const DuplicatesReport = lazy(() =>
     default: m.DuplicatesReport,
   })),
 )
+const DuplicateCodeReport = lazy(() =>
+  import("@/routes/DuplicateCodeReport").then((m) => ({
+    default: m.DuplicateCodeReport,
+  })),
+)
 const StructuredDataReport = lazy(() =>
   import("@/routes/StructuredDataReport").then((m) => ({
     default: m.StructuredDataReport,
@@ -293,6 +298,10 @@ export const router = createBrowserRouter([
       {
         path: "crawls/:crawlId/issues/category/:categoryId",
         element: <IssueCategoryDetail />,
+      },
+      {
+        path: "crawls/:crawlId/duplicate-code",
+        element: <DuplicateCodeReport />,
       },
       {
         path: "crawls/:crawlId/issues/type/:alertType",

@@ -258,6 +258,147 @@ function ScheduleCard({
             type="button"
             disabled={disabled || saveMut.isPending}
             onClick={() => saveMut.mutate(cadence)}
+            data-testid="schedule-save"
+          >
+            {saveMut.isPending ? "Saving..." : "Save"}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Crawl limits section
+// ---------------------------------------------------------------------------
+
+// Mirrors the backend policy in Site.java + SiteController.enforceMaxPagesPolicy.
+const UNVERIFIED_MAX_PAGES = 10_000
+const VERIFIED_DEFAULT_MAX_PAGES = 1_000_000
+
+// Safe narrow for ApiError.body (typed unknown) to extract the canonical
+// ApiErrorResponse.code without an `as` cast.
+function readErrorCode(body: unknown): string | null {
+  if (typeof body !== "object" || body === null) return null
+  if (!("code" in body)) return null
+  const code = body.code
+  return typeof code === "string" ? code : null
+}
+
+function CrawlLimitsCard({
+  tenantId,
+  siteId,
+  verified,
+  initialMaxPages,
+  onUnverifiedClick,
+}: {
+  tenantId: string
+  siteId: string
+  verified: boolean
+  // The generated Site type declares maxPages as required-non-null, but DB
+  // rows can omit it; accept the runtime-nullable shape here.
+  initialMaxPages: number | null | undefined
+  onUnverifiedClick: () => void
+}) {
+  const client = useApiClient()
+  const queryClient = useQueryClient()
+  const defaultDisplay = verified
+    ? VERIFIED_DEFAULT_MAX_PAGES
+    : UNVERIFIED_MAX_PAGES
+  const resolvedInitial =
+    typeof initialMaxPages === "number" && initialMaxPages > 0
+      ? initialMaxPages
+      : defaultDisplay
+  const [draft, setDraft] = useState<number>(resolvedInitial)
+  useEffect(() => {
+    setDraft(resolvedInitial)
+  }, [resolvedInitial])
+
+  const saveMut = useMutation({
+    mutationFn: (next: number) =>
+      client.updateSite(tenantId, siteId, { maxPages: next }),
+    onSuccess: (updated) => {
+      toast.success("Crawl limits saved")
+      queryClient.setQueryData(["site", tenantId, siteId], updated)
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 409) {
+        const code = readErrorCode(err.body)
+        if (code === "VERIFICATION_REQUIRED") {
+          toast.error(
+            "Verify ownership to raise the page limit above 10,000.",
+            {
+              action: { label: "Verify", onClick: onUnverifiedClick },
+            },
+          )
+          return
+        }
+      }
+      toast.error("Could not save crawl limits.")
+    },
+  })
+
+  const storedExceedsUnverifiedCap =
+    !verified &&
+    typeof initialMaxPages === "number" &&
+    initialMaxPages > UNVERIFIED_MAX_PAGES
+
+  const disabled = !verified
+  const draftIsValid = Number.isFinite(draft) && draft >= 1
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Crawl limits</CardTitle>
+        <CardDescription>
+          Maximum number of pages we will fetch per crawl run.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {!verified ? (
+          <p className="rounded-md border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+            Unverified sites are capped at 10,000 pages.{" "}
+            <button
+              type="button"
+              className="underline hover:text-foreground"
+              onClick={onUnverifiedClick}
+              data-testid="max-pages-verify-link"
+            >
+              Verify ownership to raise this
+            </button>
+          </p>
+        ) : null}
+        {storedExceedsUnverifiedCap ? (
+          <p className="rounded-md border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
+            This site has a stored limit of{" "}
+            {initialMaxPages?.toLocaleString()} pages, above the 10,000
+            unverified cap. Verify ownership to keep crawling at this level.
+          </p>
+        ) : null}
+        <div className="space-y-1.5">
+          <Label htmlFor="max-pages-input">Max pages per crawl</Label>
+          <Input
+            id="max-pages-input"
+            type="number"
+            min={1}
+            value={draft}
+            onChange={(e) => setDraft(Number(e.target.value))}
+            disabled={disabled}
+            className="w-40"
+            data-testid="max-pages-input"
+          />
+          <p className="text-xs text-muted-foreground">
+            {verified
+              ? "Verified sites default to 1,000,000 pages and may set this higher."
+              : "Verify ownership to set this above 10,000."}
+          </p>
+        </div>
+        <div>
+          <Button
+            type="button"
+            disabled={disabled || saveMut.isPending || !draftIsValid}
+            onClick={() => saveMut.mutate(draft)}
+            data-testid="max-pages-save"
           >
             {saveMut.isPending ? "Saving..." : "Save"}
           </Button>
@@ -1397,6 +1538,14 @@ export function SiteSettings() {
         tenantId={tenantId}
         siteId={siteId}
         verified={verified}
+        onUnverifiedClick={() => setVerifyOpen(true)}
+      />
+
+      <CrawlLimitsCard
+        tenantId={tenantId}
+        siteId={siteId}
+        verified={verified}
+        initialMaxPages={site.maxPages}
         onUnverifiedClick={() => setVerifyOpen(true)}
       />
 

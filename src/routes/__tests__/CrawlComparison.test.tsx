@@ -76,6 +76,7 @@ function makeSummary(): IssuesSummary {
         byType: {},
       },
     ],
+    duplicateCodeStats: null,
   }
 }
 

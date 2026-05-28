@@ -48,6 +48,7 @@ import type {
   CreateTenantInput,
   CustomAlertRuleParams,
   DirectoryNode,
+  DuplicateCodeResult,
   DuplicatesResult,
   EmailChannel,
   EmailedSummaryResponse,
@@ -555,6 +556,13 @@ export function createApiClient(opts: CreateApiClientOptions) {
     return request<DuplicatesResult>(
       "GET",
       `/api/crawls/${crawlId}/duplicates`,
+    )
+  }
+
+  function getDuplicateCode(crawlId: string): Promise<DuplicateCodeResult> {
+    return request<DuplicateCodeResult>(
+      "GET",
+      `/api/crawls/${crawlId}/duplicate-code`,
     )
   }
 
@@ -1663,6 +1671,7 @@ export function createApiClient(opts: CreateApiClientOptions) {
     getStructure,
     getRedirects,
     getDuplicates,
+    getDuplicateCode,
     getSocial,
     getStructuredData,
     getResources,

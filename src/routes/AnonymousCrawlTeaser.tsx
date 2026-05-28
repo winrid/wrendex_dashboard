@@ -28,7 +28,8 @@ import { Button } from "@/components/ui/button"
 import { Toaster } from "@/components/ui/sonner"
 import { AlertCircleIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { siteDisplayName } from "@/lib/format"
+import { formatTokenBytes, siteDisplayName } from "@/lib/format"
+import type { DuplicateCodeStats } from "@/api/generated/wrendex-models"
 
 const TERMINAL = new Set(["completed", "failed", "cancelled", "error"])
 
@@ -106,11 +107,13 @@ function CategoryRow({
   errorCount,
   warningCount,
   noticeCount,
+  duplicateCodeStats,
 }: {
   label: string
   errorCount: number
   warningCount: number
   noticeCount: number
+  duplicateCodeStats?: DuplicateCodeStats | null
 }) {
   const total = errorCount + warningCount + noticeCount
   const dot =
@@ -122,29 +125,78 @@ function CategoryRow({
           ? "bg-blue-500"
           : "bg-muted-foreground/40"
   return (
-    <li className="flex items-center justify-between gap-3 px-4 py-2 text-sm">
-      <div className="flex items-center gap-3">
-        <span
-          className={cn("inline-block size-2 rounded-full", dot)}
-          aria-hidden
-        />
-        <span className="font-medium">{label}</span>
-        <span className="text-xs text-muted-foreground tabular-nums">
-          {errorCount > 0 ? (
-            <span className="text-red-500">{errorCount} err</span>
-          ) : null}
-          {warningCount > 0 ? (
-            <span className="ml-2 text-amber-500">{warningCount} warn</span>
-          ) : null}
-          {noticeCount > 0 ? (
-            <span className="ml-2 text-blue-500">{noticeCount} notice</span>
-          ) : null}
+    <li className="px-4 py-2 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span
+            className={cn("inline-block size-2 rounded-full", dot)}
+            aria-hidden
+          />
+          <span className="font-medium">{label}</span>
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {errorCount > 0 ? (
+              <span className="text-red-500">{errorCount} err</span>
+            ) : null}
+            {warningCount > 0 ? (
+              <span className="ml-2 text-amber-500">{warningCount} warn</span>
+            ) : null}
+            {noticeCount > 0 ? (
+              <span className="ml-2 text-blue-500">{noticeCount} notice</span>
+            ) : null}
+          </span>
+        </div>
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {total}
         </span>
       </div>
-      <span className="text-xs tabular-nums text-muted-foreground">
-        {total}
-      </span>
+      {duplicateCodeStats ? (
+        <DuplicateCodeStatsBlock stats={duplicateCodeStats} />
+      ) : null}
     </li>
+  )
+}
+
+function DuplicateCodeStatsBlock({ stats }: { stats: DuplicateCodeStats }) {
+  const langs: Array<{ key: "js" | "css"; label: string }> = [
+    { key: "js", label: "JS" },
+    { key: "css", label: "CSS" },
+  ]
+  const visible = langs.filter((l) => stats[l.key].alertCount > 0)
+  if (visible.length === 0) return null
+  return (
+    <div className="mt-2 ml-5 grid gap-2 sm:grid-cols-2">
+      {visible.map((l) => {
+        const s = stats[l.key]
+        return (
+          <div
+            key={l.key}
+            className="rounded-md border bg-background/60 px-2 py-1.5 text-xs tabular-nums"
+          >
+            <div className="font-medium text-muted-foreground">{l.label}</div>
+            <div className="mt-0.5 flex gap-3">
+              <span>
+                Total{" "}
+                <span className="font-semibold text-foreground">
+                  {formatTokenBytes(s.totalTokens)}
+                </span>
+              </span>
+              <span>
+                Avg{" "}
+                <span className="font-semibold text-foreground">
+                  {formatTokenBytes(s.avgTokens)}
+                </span>
+              </span>
+              <span>
+                Max{" "}
+                <span className="font-semibold text-foreground">
+                  {formatTokenBytes(s.maxTokens)}
+                </span>
+              </span>
+            </div>
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
@@ -417,6 +469,11 @@ export function AnonymousCrawlTeaser() {
                   errorCount={c.errorCount}
                   warningCount={c.warningCount}
                   noticeCount={c.noticeCount}
+                  duplicateCodeStats={
+                    c.category === "Duplicate Code"
+                      ? data.issuesSummary.duplicateCodeStats
+                      : null
+                  }
                 />
               ))}
             </ul>

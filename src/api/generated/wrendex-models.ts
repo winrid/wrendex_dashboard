@@ -390,6 +390,34 @@ export interface DirectoryNode {
     statusCodeCounts: { [index: string]: number };
 }
 
+export interface DuplicateCodeEntry {
+    alertId: string;
+    pageUrl: string;
+    language: string;
+    tokenCount: number | null;
+    sourceA: string;
+    sourceB: string;
+    message: string;
+    snippet: string | null;
+}
+
+export interface DuplicateCodeLanguageStats {
+    alertCount: number;
+    totalTokens: number;
+    avgTokens: number;
+    maxTokens: number;
+}
+
+export interface DuplicateCodeResult {
+    stats: DuplicateCodeStats | null;
+    entries: DuplicateCodeEntry[];
+}
+
+export interface DuplicateCodeStats {
+    js: DuplicateCodeLanguageStats;
+    css: DuplicateCodeLanguageStats;
+}
+
 export interface DuplicateGroup {
     hash: string | null;
     urls: string[];
@@ -416,6 +444,7 @@ export interface IssuesSummary {
     totalIssues: number;
     bySeverity: { [index: string]: number };
     byCategory: CategorySummary[];
+    duplicateCodeStats: DuplicateCodeStats | null;
 }
 
 export interface LinkEntry {
@@ -815,6 +844,7 @@ export interface Alert {
     affectedUrls: string[];
     snoozedUntil: DateAsString;
     assignedToUserId: string;
+    tokenCount: number | null;
 }
 
 export interface AlertRule {

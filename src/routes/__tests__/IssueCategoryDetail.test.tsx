@@ -68,6 +68,7 @@ describe("IssueCategoryDetail", () => {
           byType: { TITLE_MISSING: 3, TITLE_TOO_LONG: 2 },
         },
       ],
+      duplicateCodeStats: null,
     }
     getIssuesSummary.mockResolvedValue(summary)
     const result = {
