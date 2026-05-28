@@ -46,6 +46,7 @@ export function AnonymousCrawlProgress({ summary }: AnonymousCrawlProgressProps)
   const status = summary?.status ?? "queued"
   const crawled = summary?.pagesCrawled ?? 0
   const discovered = summary?.pagesDiscovered ?? 0
+  const progress = summary?.postProcessingProgress ?? null
 
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
@@ -54,26 +55,54 @@ export function AnonymousCrawlProgress({ summary }: AnonymousCrawlProgressProps)
   }, [])
 
   const etaSeconds = summary ? computeEtaSeconds(summary, now) : null
+  const inPostProcessing = status === "post-processing"
+
+  // Status line: page progress while dispatching, phase label once
+  // post-processing kicks in. The BE only populates postProcessingProgress
+  // during phase 1+ so its presence is the cleanest signal.
+  const statusLine = progress
+    ? `${progress.label}${
+        progress.total > 0
+          ? ` (${progress.completed.toLocaleString()} of ${progress.total.toLocaleString()})`
+          : progress.completed > 0
+            ? ` (${progress.completed.toLocaleString()})`
+            : ""
+      }`
+    : summary
+      ? `Status: ${status} - ${crawled.toLocaleString()} of ${discovered.toLocaleString()} pages crawled`
+      : `Status: ${status}`
+
+  const barFraction =
+    progress && progress.total > 0
+      ? Math.max(0, Math.min(1, progress.completed / progress.total))
+      : null
 
   return (
     <div className="rounded-md border bg-card/50 p-6">
       <div className="flex items-center gap-3">
         <Loader2Icon className="size-5 animate-spin text-primary" />
-        <div className="space-y-0.5">
-          <div className="text-sm font-medium">Running free audit</div>
-          <div className="text-xs text-muted-foreground">
-            Status: {status}
-            {summary
-              ? ` - ${crawled.toLocaleString()} of ${discovered.toLocaleString()} pages crawled`
-              : null}
+        <div className="min-w-0 flex-1 space-y-0.5">
+          <div className="text-sm font-medium">
+            {inPostProcessing ? "Analyzing crawled pages" : "Running free audit"}
           </div>
+          <div className="truncate text-xs text-muted-foreground">{statusLine}</div>
         </div>
       </div>
+      {barFraction != null ? (
+        <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-primary transition-all duration-300"
+            style={{ width: `${(barFraction * 100).toFixed(1)}%` }}
+          />
+        </div>
+      ) : null}
       <p className="mt-4 text-xs text-muted-foreground">
         We crawl your site, score it, and surface the issues that matter.{" "}
-        {etaSeconds != null
-          ? formatEta(etaSeconds)
-          : "This usually finishes in a few minutes."}
+        {inPostProcessing
+          ? "Cross-referencing results - usually under a few minutes."
+          : etaSeconds != null
+            ? formatEta(etaSeconds)
+            : "This usually finishes in a few minutes."}
       </p>
     </div>
   )

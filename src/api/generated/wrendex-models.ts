@@ -66,6 +66,14 @@ export interface AnonymousCrawlLastScrapedPage {
     crawledAt: string | null;
 }
 
+export interface AnonymousCrawlPostProcessingProgress {
+    phase: string;
+    label: string;
+    completed: number;
+    total: number;
+    updatedAt: string;
+}
+
 export interface AnonymousCrawlStartResponse {
     token: string;
     crawlRunId: string;
@@ -88,6 +96,7 @@ export interface AnonymousCrawlSummary {
     finishedAt: string | null;
     expiresAt: string | null;
     lastScrapedPage: AnonymousCrawlLastScrapedPage | null;
+    postProcessingProgress: AnonymousCrawlPostProcessingProgress | null;
 }
 
 export interface AuditLogEntryDto {
@@ -906,6 +915,8 @@ export interface CrawlRun {
     lastHeartbeatAt: DateAsString;
     origin: string;
     seedUrls: string[];
+    postProcessingPhase: string;
+    postProcessingProgress: PostProcessingProgress;
 }
 
 export interface CreditLedgerEntry {
@@ -1130,6 +1141,14 @@ export interface PersonalApiToken {
     lastUsedAt: DateAsString;
     revokedAt: DateAsString;
     expiresAt: DateAsString;
+}
+
+export interface PostProcessingProgress {
+    phase: string;
+    label: string;
+    completed: number;
+    total: number;
+    updatedAt: DateAsString;
 }
 
 export interface ProcessedStripeEvent {
@@ -1407,6 +1426,8 @@ export type Kind = "DEBIT_HTTP" | "DEBIT_BROWSER" | "DEBIT_CHANGE_DETECT" | "GRA
 export type EmailDeliveryKind = "PASSWORD_RESET" | "ALERT" | "DIGEST" | "INVITE" | "OTHER";
 
 export type EmailDeliveryStatus = "QUEUED" | "SENT" | "FAILED";
+
+export type PostProcessingPhase = "NOT_STARTED" | "ENRICH_RESOURCES_DONE" | "SITEMAP_ALERTS_DONE" | "CRAWL_INDEX_DONE" | "ALERT_INBOUND_LINKS_DONE" | "POST_CRAWL_CHECKS_DONE" | "CROSS_CRAWL_DONE" | "ROBOTS_ALERT_DONE" | "FINALIZED";
 
 export type Severity = "ERROR" | "WARNING" | "NOTICE";
 

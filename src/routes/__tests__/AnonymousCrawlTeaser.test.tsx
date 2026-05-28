@@ -83,6 +83,7 @@ describe("AnonymousCrawlTeaser", () => {
       startedAt: "2026-05-02T12:00:00Z",
       finishedAt: "2026-05-02T12:01:30Z",
       lastScrapedPage: null,
+      postProcessingProgress: null,
     }
     getAnonymousCrawl.mockResolvedValue(summary)
 
